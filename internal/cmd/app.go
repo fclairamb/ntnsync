@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/v2"
 	"github.com/urfave/cli/v3"
 
@@ -130,8 +130,8 @@ func NewApp() *cli.Command {
 		},
 		Before: func(ctx context.Context, _ *cli.Command) (context.Context, error) {
 			// Load environment variables with NTN_ prefix
-			if err := konfig.Load(env.Provider("NTN_", ".", func(s string) string {
-				return s
+			if err := konfig.Load(env.Provider(".", env.Opt{
+				Prefix: "NTN_",
 			}), nil); err != nil {
 				return ctx, fmt.Errorf("load env: %w", err)
 			}
