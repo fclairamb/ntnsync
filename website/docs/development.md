@@ -6,6 +6,22 @@ sidebar_position: 5
 
 ## Logging
 
+### Log Format Configuration
+
+Set `NTN_LOG_FORMAT` environment variable to control output:
+- `text` (default): Human-readable format for development
+- `json`: Structured JSON for CI/CD and log aggregation
+
+```bash
+# JSON format for production/CI
+NTN_LOG_FORMAT=json ./ntnsync sync
+
+# Text format (default)
+./ntnsync sync -v
+```
+
+### Using slog
+
 Always use the logger with context when available:
 
 ```go

@@ -81,7 +81,7 @@ func setupLogging(cmd *cli.Command) {
 	switch format {
 	case LogFormatJSON:
 		handler = slog.NewJSONHandler(os.Stderr, opts)
-	default:
+	case LogFormatText:
 		handler = slog.NewTextHandler(os.Stderr, opts)
 	}
 
