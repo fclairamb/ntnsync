@@ -29,5 +29,5 @@ jobs:
             docs
             ci
             release
-            logs
+            logging
           requireScope: false
