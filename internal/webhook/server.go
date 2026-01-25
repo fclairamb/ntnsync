@@ -43,6 +43,7 @@ func NewServer(
 	handler := NewHandler(queueManager, storeInst, cfg.Secret, cfg.AutoSync, logger, syncWorker, remoteConfig)
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/health", handler.HandleHealth)
 	mux.HandleFunc("/api/version", handler.HandleVersion)
 	mux.HandleFunc(cfg.Path, handler.HandleWebhook)
 

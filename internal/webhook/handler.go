@@ -194,6 +194,18 @@ func (h *Handler) HandleVersion(writer http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// HandleHealth handles the /health endpoint for health checks.
+func (h *Handler) HandleHealth(writer http.ResponseWriter, req *http.Request) {
+	response := map[string]string{
+		"status": "ok",
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(writer).Encode(response); err != nil {
+		h.logger.ErrorContext(req.Context(), "failed to encode health response", "error", err)
+	}
+}
+
 // verifySignature verifies the webhook signature using HMAC-SHA256.
 // If no secret is configured, signature verification is skipped.
 func (h *Handler) verifySignature(req *http.Request) bool {
