@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/env/v2"
 	"github.com/knadh/koanf/v2"
 	"github.com/urfave/cli/v3"
 
