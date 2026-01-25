@@ -29,4 +29,5 @@ jobs:
             docs
             ci
             release
+            logging
           requireScope: false

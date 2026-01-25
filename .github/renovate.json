@@ -6,7 +6,15 @@
     {
       "matchUpdateTypes": ["minor", "patch"],
       "matchCurrentVersion": "!/^0/",
-      "automerge": true
+      "automergeStrategy": "squash",
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Group koanf packages",
+      "matchDatasources": ["go"],
+      "matchDepPatterns": ["^github.com/knadh/koanf(/.*)?$"],
+      "groupName": "koanf"
     }
   ]
 }
