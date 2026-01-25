@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/fclairamb/ntnsync/compare/v0.3.0...v0.3.1) (2026-01-25)
+
+
+### Bug Fixes
+
+* **store:** handle non-fast-forward push errors by pulling first ([#15](https://github.com/fclairamb/ntnsync/issues/15)) ([1c83275](https://github.com/fclairamb/ntnsync/commit/1c832753c4cfc7d0c4efc5b6253cc16acd4132a0))
+
 ## [0.3.0](https://github.com/fclairamb/ntnsync/compare/v0.2.0...v0.3.0) (2026-01-25)
 
 
