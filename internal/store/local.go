@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport"
 
 	"github.com/fclairamb/ntnsync/internal/apperrors"
 )
@@ -248,6 +250,11 @@ func (s *LocalStore) Pull(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	return s.pullLocked(ctx)
+}
+
+// pullLocked performs the actual pull operation. Caller must hold s.mu.
+func (s *LocalStore) pullLocked(ctx context.Context) error {
 	auth, err := s.remoteConfig.GetAuth()
 	if err != nil {
 		return fmt.Errorf("get auth: %w", err)
@@ -283,6 +290,7 @@ func (s *LocalStore) Pull(ctx context.Context) error {
 }
 
 // Push pushes local commits to the remote repository.
+// If a non-fast-forward error occurs, it will attempt to pull first and retry the push.
 func (s *LocalStore) Push(ctx context.Context) error {
 	if !s.IsRemoteEnabled() {
 		return nil
@@ -296,9 +304,32 @@ func (s *LocalStore) Push(ctx context.Context) error {
 		return fmt.Errorf("get auth: %w", err)
 	}
 
+	err = s.pushLocked(ctx, auth)
+	if err == nil {
+		return nil
+	}
+
+	if !strings.Contains(err.Error(), "non-fast-forward") {
+		return err
+	}
+
+	// Handle non-fast-forward error by pulling and retrying
+	s.logger.WarnContext(ctx, "push rejected (non-fast-forward), pulling and retrying", "error", err)
+
+	if pullErr := s.pullLocked(ctx); pullErr != nil {
+		return fmt.Errorf("pull before retry: %w", pullErr)
+	}
+
+	s.logger.InfoContext(ctx, "retrying push after pull")
+
+	return s.pushLocked(ctx, auth)
+}
+
+// pushLocked performs the actual push operation. Caller must hold s.mu.
+func (s *LocalStore) pushLocked(ctx context.Context, auth transport.AuthMethod) error {
 	s.logger.InfoContext(ctx, "pushing to remote", "url", s.remoteConfig.URL, "branch", s.remoteConfig.Branch)
 
-	err = s.repo.PushContext(ctx, &git.PushOptions{
+	err := s.repo.PushContext(ctx, &git.PushOptions{
 		RemoteName: "origin",
 		Auth:       auth,
 	})
@@ -307,10 +338,12 @@ func (s *LocalStore) Push(ctx context.Context) error {
 			s.logger.InfoContext(ctx, "nothing to push")
 			return nil
 		}
+
 		return fmt.Errorf("push: %w", err)
 	}
 
 	s.logger.InfoContext(ctx, "push complete")
+
 	return nil
 }
 
