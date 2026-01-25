@@ -10,6 +10,31 @@ ntnsync provides commands for syncing Notion content to a local git repository.
 | `--store-path`, `-s` | `NTN_DIR` | Git repository path (default: `notion`) |
 | `--verbose` | | Enable debug logging |
 
+## Logging Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NTN_LOG_FORMAT` | `text` | Log output format: `text` (human-readable) or `json` (structured) |
+
+**`NTN_LOG_FORMAT`**: Controls log output format.
+- `text` (default): Human-readable text format suitable for development
+- `json`: JSON-formatted structured logs for CI/CD, log aggregation, and monitoring
+
+**Examples**:
+```bash
+# Default text format
+./ntnsync sync -v
+
+# JSON format for CI/CD pipelines
+NTN_LOG_FORMAT=json ./ntnsync sync -v
+```
+
+**JSON output example**:
+```json
+{"time":"2026-01-24T10:30:45Z","level":"INFO","msg":"Starting sync"}
+{"time":"2026-01-24T10:30:46Z","level":"DEBUG","msg":"Processing page","page_id":"abc123"}
+```
+
 ## Commit/Push Environment Variables
 
 Git commit and push behavior is controlled via environment variables:
