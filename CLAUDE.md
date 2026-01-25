@@ -24,6 +24,9 @@ NTN_COMMIT=true ./ntnsync sync                  # Process queue, commit
 - `NTN_COMMIT_PERIOD=1m` - Commit periodically during sync (e.g., every 1 minute)
 - `NTN_PUSH=true/false` - Push to remote (defaults to true when `NTN_GIT_URL` is set)
 
+**Logging environment variables**:
+- `NTN_LOG_FORMAT=text|json` - Log format (default: text, use json for CI/CD)
+
 **Key concepts**:
 - File paths never change when pages are renamed
 - Queue types: `init` (skip if exists) vs `update` (always process)

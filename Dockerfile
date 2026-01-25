@@ -55,5 +55,5 @@ VOLUME /data
 ENV NTN_DIR=/data
 
 # Run the binary (default to help)
-ENTRYPOINT ["./ntnsync"]
+ENTRYPOINT ["/app/ntnsync"]
 CMD ["--help"]
