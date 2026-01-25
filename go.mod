@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/go-git/go-git/v5 v5.16.4
 	github.com/knadh/koanf/providers/env v1.1.0
-	github.com/knadh/koanf/v2 v2.3.0
+	github.com/knadh/koanf/v2 v2.3.2
 	github.com/urfave/cli/v3 v3.6.1
 	golang.org/x/time v0.14.0
 )
