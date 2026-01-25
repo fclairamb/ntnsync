@@ -1,4 +1,4 @@
-.PHONY: build clean test run sync tidy intercept
+.PHONY: build clean test run sync tidy intercept docker-test
 
 BINARY=ntnsync
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "dev")
@@ -28,3 +28,11 @@ tidy:
 
 intercept:
 	./scripts/intercept.sh
+
+docker-test:
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg GIT_TIME=$(GIT_TIME) \
+		-t ntnsync:test .
+	docker run --rm ntnsync:test --version

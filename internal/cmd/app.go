@@ -43,15 +43,56 @@ var verboseFlag = &cli.BoolFlag{
 	Usage: "Enable verbose logging",
 }
 
-// setupLogging configures the global logger based on the verbose flag.
+// LogFormat represents the log output format.
+type LogFormat string
+
+const (
+	// LogFormatText is the human-readable text format (default).
+	LogFormatText LogFormat = "text"
+	// LogFormatJSON is the JSON-formatted structured logs.
+	LogFormatJSON LogFormat = "json"
+)
+
+// getLogFormat returns the configured log format from NTN_LOG_FORMAT environment variable.
+func getLogFormat() LogFormat {
+	val := strings.ToLower(os.Getenv("NTN_LOG_FORMAT"))
+	switch val {
+	case "json":
+		return LogFormatJSON
+	case "text", "":
+		return LogFormatText
+	default:
+		// Invalid format - will warn after logger is set up
+		return LogFormatText
+	}
+}
+
+// setupLogging configures the global logger based on the verbose flag and NTN_LOG_FORMAT.
 func setupLogging(cmd *cli.Command) {
 	level := slog.LevelInfo
 	if cmd.Bool("verbose") {
 		level = slog.LevelDebug
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: level,
-	})))
+
+	format := getLogFormat()
+	opts := &slog.HandlerOptions{Level: level}
+
+	var handler slog.Handler
+	switch format {
+	case LogFormatJSON:
+		handler = slog.NewJSONHandler(os.Stderr, opts)
+	case LogFormatText:
+		handler = slog.NewTextHandler(os.Stderr, opts)
+	}
+
+	slog.SetDefault(slog.New(handler))
+
+	// Warn about invalid format after logger is set up
+	envVal := strings.ToLower(os.Getenv("NTN_LOG_FORMAT"))
+	if envVal != "" && envVal != "text" && envVal != "json" {
+		slog.Warn("Invalid NTN_LOG_FORMAT value, using text format", "value", envVal)
+	}
+
 	if level == slog.LevelDebug {
 		slog.Debug("Verbose logging enabled")
 	}
