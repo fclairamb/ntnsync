@@ -1,10 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [
-    "config:recommended",
-    ":semanticCommits"
-  ],
-  "labels": ["automerge"],
+  "extends": ["config:recommended", ":semanticCommits"],
+  "labels": ["deps"],
   "packageRules": [
     {
       "matchUpdateTypes": ["minor", "patch"],
