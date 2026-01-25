@@ -1,0 +1,15 @@
+.git
+.gitignore
+.github
+*.md
+!README.md
+Makefile
+notion/
+specs/
+docs/
+k8s/
+scripts/
+.notion-sync/
+bin/
+dist/
+website/
