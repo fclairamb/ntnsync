@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -172,6 +173,64 @@ func (s *LocalStore) Write(ctx context.Context, path string, content []byte) err
 
 	s.logger.DebugContext(ctx, "write file complete", "path", path)
 	return nil
+}
+
+// WriteStream writes content from a reader to a file using streaming.
+// This avoids loading the entire content into memory.
+// Returns the number of bytes written.
+func (s *LocalStore) WriteStream(ctx context.Context, path string, reader io.Reader) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.logger.DebugContext(ctx, "streaming file", "path", path)
+
+	fullPath := filepath.Join(s.rootPath, path)
+	if err := os.MkdirAll(filepath.Dir(fullPath), dirPerm); err != nil {
+		s.logger.DebugContext(ctx, "create parent dir failed", "path", path, "error", err)
+		return 0, fmt.Errorf("create parent dir: %w", err)
+	}
+
+	// Write to temp file first, then rename for atomicity
+	tmpFile, err := os.CreateTemp(filepath.Dir(fullPath), ".tmp-*")
+	if err != nil {
+		s.logger.DebugContext(ctx, "create temp file failed", "path", path, "error", err)
+		return 0, fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	// Ensure cleanup on failure
+	success := false
+	defer func() {
+		_ = tmpFile.Close()
+		if !success {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	written, err := io.Copy(tmpFile, reader)
+	if err != nil {
+		s.logger.DebugContext(ctx, "write content failed", "path", path, "error", err)
+		return written, fmt.Errorf("write content: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		s.logger.DebugContext(ctx, "close temp file failed", "path", path, "error", err)
+		return written, fmt.Errorf("close temp file: %w", err)
+	}
+
+	if err := os.Chmod(tmpPath, filePerm); err != nil {
+		s.logger.DebugContext(ctx, "set permissions failed", "path", path, "error", err)
+		return written, fmt.Errorf("set permissions: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, fullPath); err != nil {
+		s.logger.DebugContext(ctx, "rename temp file failed", "path", path, "error", err)
+		return written, fmt.Errorf("rename temp file: %w", err)
+	}
+
+	success = true
+	s.logger.DebugContext(ctx, "stream file complete", "path", path, "size", written)
+	return written, nil
 }
 
 // Delete deletes a file.
