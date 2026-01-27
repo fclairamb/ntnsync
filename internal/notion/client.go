@@ -106,96 +106,151 @@ func NewClient(token string, opts ...ClientOption) *Client {
 	return client
 }
 
+// requestInfo holds metadata for a single API request (excluding context).
+type requestInfo struct {
+	method    string
+	path      string
+	pageID    string
+	startTime time.Time
+}
+
+// logArgs returns base log arguments with optional pageID.
+func (ri *requestInfo) logArgs(extra ...any) []any {
+	args := []any{"method", ri.method, "path", ri.path}
+	if ri.pageID != "" {
+		args = append(args, "page_id", ri.pageID)
+	}
+	return append(args, extra...)
+}
+
 // do performs an HTTP request with rate limiting and retries.
-//
-//nolint:funlen // HTTP client with retry logic and error handling
 func (c *Client) do(ctx context.Context, method, path string, body, result any) error {
-	// Wait for rate limiter
 	if err := c.rateLimiter.Wait(ctx); err != nil {
 		return fmt.Errorf("rate limiter: %w", err)
 	}
 
+	req, err := c.buildRequest(ctx, method, path, body)
+	if err != nil {
+		return err
+	}
+
+	reqInfo := &requestInfo{
+		method:    method,
+		path:      path,
+		pageID:    PageIDFromContext(ctx),
+		startTime: time.Now(),
+	}
+
+	c.logger.DebugContext(ctx, "API request", reqInfo.logArgs()...)
+
+	return c.executeWithRetry(ctx, req, reqInfo, result)
+}
+
+// buildRequest creates an HTTP request with the appropriate headers.
+func (c *Client) buildRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("marshal body: %w", err)
+			return nil, fmt.Errorf("marshal body: %w", err)
 		}
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
-	url := c.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Notion-Version", c.apiVersion)
 	req.Header.Set("Content-Type", "application/json")
 
-	logArgs := []any{"method", method, "path", path}
-	if pageID := PageIDFromContext(ctx); pageID != "" {
-		logArgs = append(logArgs, "page_id", pageID)
-	}
-	c.logger.DebugContext(ctx, "API request", logArgs...)
-	startTime := time.Now()
+	return req, nil
+}
 
-	// Retry with exponential backoff on rate limit
-	maxRetries := 5
+// executeWithRetry executes the request with exponential backoff on rate limits.
+func (c *Client) executeWithRetry(ctx context.Context, req *http.Request, reqInfo *requestInfo, result any) error {
+	const maxRetries = 5
 	backoff := time.Second
 
 	for attempt := range maxRetries {
-		resp, err := c.httpClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("do request: %w", err)
+		done, err := c.executeRequest(ctx, req, reqInfo, result, attempt, &backoff)
+		if done || err != nil {
+			return err
 		}
-
-		respBody, err := io.ReadAll(resp.Body)
-		if closeErr := resp.Body.Close(); closeErr != nil {
-			c.logger.WarnContext(ctx, "failed to close response body", "error", closeErr)
-		}
-		if err != nil {
-			return fmt.Errorf("read response: %w", err)
-		}
-
-		if resp.StatusCode == http.StatusTooManyRequests {
-			rateLimitArgs := []any{"attempt", attempt + 1, "backoff", backoff}
-			if pageID := PageIDFromContext(ctx); pageID != "" {
-				rateLimitArgs = append(rateLimitArgs, "page_id", pageID)
-			}
-			c.logger.WarnContext(ctx, "rate limited, backing off", rateLimitArgs...)
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(backoff):
-				backoff *= 2
-				continue
-			}
-		}
-
-		if resp.StatusCode >= httpStatusBadRequest {
-			var errResp APIError
-			if err := json.Unmarshal(respBody, &errResp); err != nil {
-				return apperrors.NewHTTPError(resp.StatusCode, string(respBody))
-			}
-			return &errResp
-		}
-
-		if result != nil {
-			if err := json.Unmarshal(respBody, result); err != nil {
-				return fmt.Errorf("unmarshal response: %w", err)
-			}
-		}
-
-		respLogArgs := []any{"method", method, "path", path, "status", resp.StatusCode, "duration", time.Since(startTime)}
-		if pageID := PageIDFromContext(ctx); pageID != "" {
-			respLogArgs = append(respLogArgs, "page_id", pageID)
-		}
-		c.logger.DebugContext(ctx, "API response", respLogArgs...)
-
-		return nil
 	}
 
 	return apperrors.ErrMaxRetriesExceeded
+}
+
+// executeRequest performs a single request attempt. Returns (done, error).
+func (c *Client) executeRequest(
+	ctx context.Context, req *http.Request, reqInfo *requestInfo, result any, attempt int, backoff *time.Duration,
+) (bool, error) {
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return true, fmt.Errorf("do request: %w", err)
+	}
+
+	respBody, err := c.readAndCloseBody(ctx, resp)
+	if err != nil {
+		return true, err
+	}
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		return c.handleRateLimit(ctx, reqInfo, attempt, backoff)
+	}
+
+	if resp.StatusCode >= httpStatusBadRequest {
+		return true, c.parseErrorResponse(respBody, resp.StatusCode)
+	}
+
+	if result != nil {
+		if err := json.Unmarshal(respBody, result); err != nil {
+			return true, fmt.Errorf("unmarshal response: %w", err)
+		}
+	}
+
+	c.logger.DebugContext(ctx, "API response",
+		reqInfo.logArgs("status", resp.StatusCode, "duration", time.Since(reqInfo.startTime))...)
+
+	return true, nil
+}
+
+// readAndCloseBody reads the response body and closes it.
+func (c *Client) readAndCloseBody(ctx context.Context, resp *http.Response) ([]byte, error) {
+	respBody, err := io.ReadAll(resp.Body)
+	if closeErr := resp.Body.Close(); closeErr != nil {
+		c.logger.WarnContext(ctx, "failed to close response body", "error", closeErr)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	return respBody, nil
+}
+
+// handleRateLimit handles rate limit responses with backoff.
+func (c *Client) handleRateLimit(
+	ctx context.Context, reqInfo *requestInfo, attempt int, backoff *time.Duration,
+) (bool, error) {
+	c.logger.WarnContext(ctx, "rate limited, backing off",
+		reqInfo.logArgs("attempt", attempt+1, "backoff", *backoff)...)
+
+	select {
+	case <-ctx.Done():
+		return true, ctx.Err()
+	case <-time.After(*backoff):
+		*backoff *= 2
+		return false, nil
+	}
+}
+
+// parseErrorResponse parses an API error response.
+func (c *Client) parseErrorResponse(respBody []byte, statusCode int) error {
+	var errResp APIError
+	if err := json.Unmarshal(respBody, &errResp); err != nil {
+		return apperrors.NewHTTPError(statusCode, string(respBody))
+	}
+	return &errResp
 }
