@@ -465,7 +465,7 @@ func (h *Handler) commitQueueFiles(ctx context.Context, transaction store.Transa
 	h.logger.DebugContext(ctx, "committing webhook queue files", "description", description)
 
 	message := "[ntnsync] webhook: " + description
-	if err := transaction.Commit(message); err != nil {
+	if err := transaction.Commit(ctx, message); err != nil {
 		h.logger.WarnContext(ctx, "failed to commit queue files", "error", err)
 		return
 	}

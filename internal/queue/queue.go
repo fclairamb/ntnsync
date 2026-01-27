@@ -148,7 +148,7 @@ func (qm *Manager) UpdateEntry(ctx context.Context, filename string, entry *Entr
 	}
 
 	path := filepath.Join(queueDir, filename)
-	if err := qm.tx.Write(path, data); err != nil {
+	if err := qm.tx.Write(ctx, path, data); err != nil {
 		return fmt.Errorf("write queue file: %w", err)
 	}
 
@@ -160,7 +160,7 @@ func (qm *Manager) DeleteEntry(ctx context.Context, filename string) error {
 	qm.Logger.DebugContext(ctx, "deleting queue entry", "filename", filename)
 
 	path := filepath.Join(queueDir, filename)
-	if err := qm.tx.Delete(path); err != nil {
+	if err := qm.tx.Delete(ctx, path); err != nil {
 		return fmt.Errorf("delete queue file: %w", err)
 	}
 
@@ -283,7 +283,7 @@ func (qm *Manager) CreateWebhookEntry(ctx context.Context, pageID, folder string
 
 	// Write queue file
 	path := filepath.Join(queueDir, filename)
-	if err := qm.tx.Write(path, data); err != nil {
+	if err := qm.tx.Write(ctx, path, data); err != nil {
 		return "", fmt.Errorf("write queue file: %w", err)
 	}
 
@@ -368,7 +368,7 @@ func (qm *Manager) createChunkEntryNewFormat(
 	}
 
 	path := filepath.Join(queueDir, filename)
-	if err := qm.tx.Write(path, data); err != nil {
+	if err := qm.tx.Write(ctx, path, data); err != nil {
 		return "", fmt.Errorf("write queue file: %w", err)
 	}
 
@@ -403,7 +403,7 @@ func (qm *Manager) createChunkEntryLegacy(ctx context.Context, entry Entry, chun
 	}
 
 	path := filepath.Join(queueDir, filename)
-	if err := qm.tx.Write(path, data); err != nil {
+	if err := qm.tx.Write(ctx, path, data); err != nil {
 		return "", fmt.Errorf("write queue file: %w", err)
 	}
 

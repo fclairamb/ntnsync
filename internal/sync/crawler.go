@@ -95,11 +95,11 @@ func (c *Crawler) SetTransaction(tx store.Transaction) {
 
 // Commit commits the current transaction with the given message.
 // After commit, a new transaction is automatically started.
-func (c *Crawler) Commit(_ context.Context, message string) error {
+func (c *Crawler) Commit(ctx context.Context, message string) error {
 	if c.tx == nil {
 		return nil
 	}
-	if err := c.tx.Commit(message); err != nil {
+	if err := c.tx.Commit(ctx, message); err != nil {
 		return err
 	}
 	return nil

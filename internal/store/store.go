@@ -39,17 +39,17 @@ type Store interface {
 // Commit creates a git commit with all changes. Rollback reverts uncommitted changes.
 type Transaction interface {
 	// Write operations - applied immediately to filesystem
-	Write(path string, content []byte) error
-	WriteStream(path string, reader io.Reader) (int64, error)
-	Delete(path string) error
-	Mkdir(path string) error
+	Write(ctx context.Context, path string, content []byte) error
+	WriteStream(ctx context.Context, path string, reader io.Reader) (int64, error)
+	Delete(ctx context.Context, path string) error
+	Mkdir(ctx context.Context, path string) error
 
 	// Commit creates a git commit with all changes made in this transaction.
 	// After commit, the transaction can continue to be used for more changes.
-	Commit(message string) error
+	Commit(ctx context.Context, message string) error
 
 	// Rollback reverts all uncommitted changes and closes the transaction.
-	Rollback() error
+	Rollback(ctx context.Context) error
 }
 
 // ReadFSProvider returns an fs.FS view for read-only consumers.

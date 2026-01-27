@@ -53,14 +53,14 @@ type Store interface {
 ```go
 type Transaction interface {
     // Write operations - applied immediately to filesystem
-    Write(path string, content []byte) error
-    WriteStream(path string, reader io.Reader) (int64, error)
-    Delete(path string) error
-    Mkdir(path string) error
+    Write(ctx context.Context, path string, content []byte) error
+    WriteStream(ctx context.Context, path string, reader io.Reader) (int64, error)
+    Delete(ctx context.Context, path string) error
+    Mkdir(ctx context.Context, path string) error
 
     // Git operations
-    Commit(message string) error
-    Rollback() error
+    Commit(ctx context.Context, message string) error
+    Rollback(ctx context.Context) error
 }
 ```
 

@@ -60,7 +60,7 @@ func testWriteStreamNewFile(ctx context.Context, t *testing.T, store *LocalStore
 	content := []byte("hello streaming world")
 	reader := bytes.NewReader(content)
 
-	written, err := tx.WriteStream("test/stream.txt", reader)
+	written, err := tx.WriteStream(ctx, "test/stream.txt", reader)
 	if err != nil {
 		t.Fatalf("WriteStream failed: %v", err)
 	}
@@ -86,7 +86,7 @@ func testWriteStreamCreatesParentDirs(ctx context.Context, t *testing.T, store *
 	content := []byte("nested content")
 	reader := bytes.NewReader(content)
 
-	_, err := tx.WriteStream("deep/nested/path/file.txt", reader)
+	_, err := tx.WriteStream(ctx, "deep/nested/path/file.txt", reader)
 	if err != nil {
 		t.Fatalf("WriteStream failed: %v", err)
 	}
@@ -101,13 +101,13 @@ func testWriteStreamCreatesParentDirs(ctx context.Context, t *testing.T, store *
 	}
 }
 
-func testWriteStreamPermissions(_ context.Context, t *testing.T, tx Transaction, tmpDir string) {
+func testWriteStreamPermissions(ctx context.Context, t *testing.T, tx Transaction, tmpDir string) {
 	t.Helper()
 
 	content := []byte("permission test")
 	reader := bytes.NewReader(content)
 
-	_, err := tx.WriteStream("perm-test.txt", reader)
+	_, err := tx.WriteStream(ctx, "perm-test.txt", reader)
 	if err != nil {
 		t.Fatalf("WriteStream failed: %v", err)
 	}
@@ -125,13 +125,13 @@ func testWriteStreamPermissions(_ context.Context, t *testing.T, tx Transaction,
 	}
 }
 
-func testWriteStreamAtomic(_ context.Context, t *testing.T, tx Transaction, tmpDir string) {
+func testWriteStreamAtomic(ctx context.Context, t *testing.T, tx Transaction, tmpDir string) {
 	t.Helper()
 
 	content := []byte("atomic test")
 	reader := bytes.NewReader(content)
 
-	_, err := tx.WriteStream("atomic.txt", reader)
+	_, err := tx.WriteStream(ctx, "atomic.txt", reader)
 	if err != nil {
 		t.Fatalf("WriteStream failed: %v", err)
 	}

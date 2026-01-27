@@ -330,7 +330,7 @@ type localTransaction struct {
 }
 
 // Write writes content to a file immediately.
-func (t *localTransaction) Write(path string, content []byte) error {
+func (t *localTransaction) Write(_ context.Context, path string, content []byte) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -357,7 +357,7 @@ func (t *localTransaction) Write(path string, content []byte) error {
 // WriteStream writes content from a reader to a file using streaming.
 // This avoids loading the entire content into memory.
 // Returns the number of bytes written.
-func (t *localTransaction) WriteStream(path string, reader io.Reader) (int64, error) {
+func (t *localTransaction) WriteStream(_ context.Context, path string, reader io.Reader) (int64, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -412,7 +412,7 @@ func (t *localTransaction) WriteStream(path string, reader io.Reader) (int64, er
 }
 
 // Delete deletes a file immediately.
-func (t *localTransaction) Delete(path string) error {
+func (t *localTransaction) Delete(_ context.Context, path string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -433,7 +433,7 @@ func (t *localTransaction) Delete(path string) error {
 }
 
 // Mkdir creates a directory.
-func (t *localTransaction) Mkdir(path string) error {
+func (t *localTransaction) Mkdir(_ context.Context, path string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -454,7 +454,7 @@ func (t *localTransaction) Mkdir(path string) error {
 
 // Commit stages all changes and creates a git commit.
 // After commit, the transaction can continue to be used for more changes.
-func (t *localTransaction) Commit(message string) error {
+func (t *localTransaction) Commit(_ context.Context, message string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -521,7 +521,7 @@ func (t *localTransaction) Commit(message string) error {
 }
 
 // Rollback discards all uncommitted changes and closes the transaction.
-func (t *localTransaction) Rollback() error {
+func (t *localTransaction) Rollback(_ context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 

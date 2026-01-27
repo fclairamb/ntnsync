@@ -167,16 +167,16 @@ func (c *Crawler) deleteDuplicateFiles(ctx context.Context, filesToDelete []stri
 	}
 
 	for _, filePath := range filesToDelete {
-		if delErr := transaction.Delete(filePath); delErr != nil {
+		if delErr := transaction.Delete(ctx, filePath); delErr != nil {
 			c.logger.ErrorContext(ctx, "failed to delete duplicate", "path", filePath, "error", delErr)
-			if rbErr := transaction.Rollback(); rbErr != nil {
+			if rbErr := transaction.Rollback(ctx); rbErr != nil {
 				c.logger.ErrorContext(ctx, "rollback failed", "error", rbErr)
 			}
 			return fmt.Errorf("delete %s: %w", filePath, delErr)
 		}
 	}
 
-	if err := transaction.Commit("reindex: remove duplicate files"); err != nil {
+	if err := transaction.Commit(ctx, "reindex: remove duplicate files"); err != nil {
 		// Ignore "empty commit" errors - this happens when deleted files weren't tracked in git
 		if !strings.Contains(err.Error(), "empty commit") && !strings.Contains(err.Error(), "clean working tree") {
 			return fmt.Errorf("commit: %w", err)
@@ -342,7 +342,7 @@ func (c *Crawler) CommitChanges(ctx context.Context, message string) error {
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 
-	if err := tx.Commit(message); err != nil {
+	if err := tx.Commit(ctx, message); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
 
