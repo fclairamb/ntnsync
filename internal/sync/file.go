@@ -170,7 +170,7 @@ func (c *Crawler) downloadFile(ctx context.Context, fileURL, localPath string) e
 	// Stream directly to file instead of loading into memory
 	limitedReader := io.LimitReader(resp.Body, maxSize+1)
 
-	written, err := c.store.WriteStream(ctx, localPath, limitedReader)
+	written, err := c.tx.WriteStream(localPath, limitedReader)
 	if err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
@@ -183,7 +183,7 @@ func (c *Crawler) downloadFile(ctx context.Context, fileURL, localPath string) e
 			"limit", formatBytes(maxSize),
 		)
 		// Clean up the oversized file
-		if delErr := c.store.Delete(ctx, localPath); delErr != nil {
+		if delErr := c.tx.Delete(localPath); delErr != nil {
 			c.logger.WarnContext(ctx, "failed to delete oversized file", "path", localPath, "error", delErr)
 		}
 		return ErrFileTooLarge
@@ -328,7 +328,7 @@ func (c *Crawler) processFileURL(ctx context.Context, fileURL, pageFilePath, pag
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err == nil {
 		manifestPath := localPath + ".meta.json"
-		if err := c.store.Write(ctx, manifestPath, manifestData); err != nil {
+		if err := c.tx.Write(manifestPath, manifestData); err != nil {
 			c.logger.WarnContext(ctx, "failed to write file manifest", "error", err)
 		}
 	}

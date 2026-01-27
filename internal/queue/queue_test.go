@@ -18,8 +18,7 @@ const (
 // TestQueue_StartsAt1000 verifies that regular queue entries start at ID 1000.
 func TestQueue_StartsAt1000(t *testing.T) {
 	t.Parallel()
-	st := createTestStore(t)
-	qm := NewManager(st, slog.Default())
+	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
 	// Get the first queue number (should be 1000)
@@ -36,8 +35,7 @@ func TestQueue_StartsAt1000(t *testing.T) {
 // TestQueue_IncrementingIDs verifies that regular queue entries increment properly.
 func TestQueue_IncrementingIDs(t *testing.T) {
 	t.Parallel()
-	st := createTestStore(t)
-	qm := NewManager(st, slog.Default())
+	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
 	// Create first regular entry
@@ -72,8 +70,7 @@ func TestQueue_IncrementingIDs(t *testing.T) {
 // TestQueueFromWebhook_FirstEntry verifies the first webhook entry gets ID 999.
 func TestQueueFromWebhook_FirstEntry(t *testing.T) {
 	t.Parallel()
-	st := createTestStore(t)
-	qm := NewManager(st, slog.Default())
+	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
 	// Create first webhook entry
@@ -105,8 +102,7 @@ func TestQueueFromWebhook_FirstEntry(t *testing.T) {
 // TestQueueFromWebhook_Decrementing verifies webhook entries decrement properly.
 func TestQueueFromWebhook_Decrementing(t *testing.T) {
 	t.Parallel()
-	st := createTestStore(t)
-	qm := NewManager(st, slog.Default())
+	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
 	// Create first webhook entry (999)
@@ -140,8 +136,7 @@ func TestQueueFromWebhook_Decrementing(t *testing.T) {
 // TestQueueOrdering verifies webhook entries are processed before regular entries.
 func TestQueueOrdering(t *testing.T) {
 	t.Parallel()
-	st := createTestStore(t)
-	qm := NewManager(st, slog.Default())
+	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
 	// Create a regular entry first (should get ID 1000)
@@ -202,8 +197,7 @@ func TestQueueOrdering(t *testing.T) {
 // TestGetMinQueueID verifies GetMinQueueID returns correct values.
 func TestGetMinQueueID(t *testing.T) {
 	t.Parallel()
-	st := createTestStore(t)
-	qm := NewManager(st, slog.Default())
+	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
 	// Empty queue should return 0
@@ -252,8 +246,7 @@ func TestGetMinQueueID(t *testing.T) {
 // TestWebhookEntryWithExistingRegular verifies webhook entries work with existing regular entries.
 func TestWebhookEntryWithExistingRegular(t *testing.T) {
 	t.Parallel()
-	st := createTestStore(t)
-	qm := NewManager(st, slog.Default())
+	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
 	// Create regular entries first
@@ -297,8 +290,8 @@ func TestWebhookEntryWithExistingRegular(t *testing.T) {
 	}
 }
 
-// createTestStore creates a temporary LocalStore for testing.
-func createTestStore(t *testing.T) store.Store {
+// createTestStoreAndManager creates a temporary LocalStore and Manager with transaction for testing.
+func createTestStoreAndManager(t *testing.T) (store.Store, *Manager) { //nolint:unparam // may be used in future
 	t.Helper()
 	tmpDir, err := os.MkdirTemp("", "queue_test")
 	if err != nil {
@@ -317,9 +310,17 @@ func createTestStore(t *testing.T) store.Store {
 
 	// Create queue directory
 	queuePath := filepath.Join(tmpDir, queueDir)
-	if err := os.MkdirAll(queuePath, 0750); err != nil {
-		t.Fatalf("failed to create queue dir: %v", err)
+	if mkErr := os.MkdirAll(queuePath, 0750); mkErr != nil {
+		t.Fatalf("failed to create queue dir: %v", mkErr)
 	}
 
-	return st
+	// Create manager and set transaction
+	qm := NewManager(st, slog.Default())
+	tx, err := st.BeginTx(context.Background())
+	if err != nil {
+		t.Fatalf("failed to begin transaction: %v", err)
+	}
+	qm.SetTransaction(tx)
+
+	return st, qm
 }

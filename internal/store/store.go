@@ -16,22 +16,14 @@ type FileInfo struct {
 	ModTime time.Time
 }
 
-// Store abstracts read/write file operations.
-//
-//nolint:interfacebloat // Store needs all these methods for complete file/git operations
+// Store abstracts file storage with transactional write operations.
 type Store interface {
 	// Read operations
 	Read(ctx context.Context, path string) ([]byte, error)
 	Exists(ctx context.Context, path string) (bool, error)
 	List(ctx context.Context, dir string) ([]FileInfo, error)
 
-	// Write operations
-	Write(ctx context.Context, path string, content []byte) error
-	WriteStream(ctx context.Context, path string, reader io.Reader) (int64, error)
-	Delete(ctx context.Context, path string) error
-	Mkdir(ctx context.Context, path string) error
-
-	// Atomic batch operations (maps to git commits)
+	// Transaction management - all writes go through transactions
 	BeginTx(ctx context.Context) (Transaction, error)
 
 	// Remote operations
@@ -42,11 +34,21 @@ type Store interface {
 	Unlock()
 }
 
-// Transaction groups multiple operations into one commit.
+// Transaction groups multiple write operations.
+// All writes are applied immediately to the filesystem.
+// Commit creates a git commit with all changes. Rollback reverts uncommitted changes.
 type Transaction interface {
+	// Write operations - applied immediately to filesystem
 	Write(path string, content []byte) error
+	WriteStream(path string, reader io.Reader) (int64, error)
 	Delete(path string) error
+	Mkdir(path string) error
+
+	// Commit creates a git commit with all changes made in this transaction.
+	// After commit, the transaction can continue to be used for more changes.
 	Commit(message string) error
+
+	// Rollback reverts all uncommitted changes and closes the transaction.
 	Rollback() error
 }
 

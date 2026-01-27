@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestLocalStore_WriteStream(t *testing.T) {
+func TestLocalTransaction_WriteStream(t *testing.T) {
 	t.Parallel()
 
 	// Create a temporary directory for testing
@@ -27,34 +27,40 @@ func TestLocalStore_WriteStream(t *testing.T) {
 
 	ctx := context.Background()
 
+	// Create a transaction for all write operations
+	tx, err := store.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("failed to begin transaction: %v", err)
+	}
+
 	t.Run("stream write to new file", func(t *testing.T) {
 		t.Parallel()
-		testWriteStreamNewFile(ctx, t, store)
+		testWriteStreamNewFile(ctx, t, store, tx)
 	})
 
 	t.Run("stream write creates parent directories", func(t *testing.T) {
 		t.Parallel()
-		testWriteStreamCreatesParentDirs(ctx, t, store)
+		testWriteStreamCreatesParentDirs(ctx, t, store, tx)
 	})
 
 	t.Run("stream write has correct permissions", func(t *testing.T) {
 		t.Parallel()
-		testWriteStreamPermissions(ctx, t, store, tmpDir)
+		testWriteStreamPermissions(ctx, t, tx, tmpDir)
 	})
 
 	t.Run("stream write is atomic", func(t *testing.T) {
 		t.Parallel()
-		testWriteStreamAtomic(ctx, t, store, tmpDir)
+		testWriteStreamAtomic(ctx, t, tx, tmpDir)
 	})
 }
 
-func testWriteStreamNewFile(ctx context.Context, t *testing.T, store *LocalStore) {
+func testWriteStreamNewFile(ctx context.Context, t *testing.T, store *LocalStore, tx Transaction) {
 	t.Helper()
 
 	content := []byte("hello streaming world")
 	reader := bytes.NewReader(content)
 
-	written, err := store.WriteStream(ctx, "test/stream.txt", reader)
+	written, err := tx.WriteStream("test/stream.txt", reader)
 	if err != nil {
 		t.Fatalf("WriteStream failed: %v", err)
 	}
@@ -74,13 +80,13 @@ func testWriteStreamNewFile(ctx context.Context, t *testing.T, store *LocalStore
 	}
 }
 
-func testWriteStreamCreatesParentDirs(ctx context.Context, t *testing.T, store *LocalStore) {
+func testWriteStreamCreatesParentDirs(ctx context.Context, t *testing.T, store *LocalStore, tx Transaction) {
 	t.Helper()
 
 	content := []byte("nested content")
 	reader := bytes.NewReader(content)
 
-	_, err := store.WriteStream(ctx, "deep/nested/path/file.txt", reader)
+	_, err := tx.WriteStream("deep/nested/path/file.txt", reader)
 	if err != nil {
 		t.Fatalf("WriteStream failed: %v", err)
 	}
@@ -95,13 +101,13 @@ func testWriteStreamCreatesParentDirs(ctx context.Context, t *testing.T, store *
 	}
 }
 
-func testWriteStreamPermissions(ctx context.Context, t *testing.T, store *LocalStore, tmpDir string) {
+func testWriteStreamPermissions(_ context.Context, t *testing.T, tx Transaction, tmpDir string) {
 	t.Helper()
 
 	content := []byte("permission test")
 	reader := bytes.NewReader(content)
 
-	_, err := store.WriteStream(ctx, "perm-test.txt", reader)
+	_, err := tx.WriteStream("perm-test.txt", reader)
 	if err != nil {
 		t.Fatalf("WriteStream failed: %v", err)
 	}
@@ -119,13 +125,13 @@ func testWriteStreamPermissions(ctx context.Context, t *testing.T, store *LocalS
 	}
 }
 
-func testWriteStreamAtomic(ctx context.Context, t *testing.T, store *LocalStore, tmpDir string) {
+func testWriteStreamAtomic(_ context.Context, t *testing.T, tx Transaction, tmpDir string) {
 	t.Helper()
 
 	content := []byte("atomic test")
 	reader := bytes.NewReader(content)
 
-	_, err := store.WriteStream(ctx, "atomic.txt", reader)
+	_, err := tx.WriteStream("atomic.txt", reader)
 	if err != nil {
 		t.Fatalf("WriteStream failed: %v", err)
 	}

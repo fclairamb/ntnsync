@@ -624,7 +624,7 @@ func (c *Crawler) processPage(
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write file
-	if err := c.store.Write(ctx, filePath, content); err != nil {
+	if err := c.tx.Write(filePath, content); err != nil {
 		return 0, fmt.Errorf("write page: %w", err)
 	}
 	filesWritten++ // Count this file write
@@ -787,7 +787,7 @@ func (c *Crawler) processDatabase(
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write file
-	if err := c.store.Write(ctx, filePath, content); err != nil {
+	if err := c.tx.Write(filePath, content); err != nil {
 		return 0, fmt.Errorf("write database: %w", err)
 	}
 	filesWritten++ // Count this file write

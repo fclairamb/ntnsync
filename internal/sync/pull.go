@@ -312,7 +312,7 @@ func (c *Crawler) saveState(ctx context.Context) error {
 	}
 
 	path := filepath.Join(stateDir, stateFile)
-	if err := c.store.Write(ctx, path, data); err != nil {
+	if err := c.tx.Write(path, data); err != nil {
 		return fmt.Errorf("write state: %w", err)
 	}
 

@@ -9,14 +9,14 @@ import (
 )
 
 // savePageRegistry saves a page registry file.
-func (c *Crawler) savePageRegistry(ctx context.Context, reg *PageRegistry) error {
+func (c *Crawler) savePageRegistry(_ context.Context, reg *PageRegistry) error {
 	data, err := json.MarshalIndent(reg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal registry: %w", err)
 	}
 
 	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("page-%s.json", reg.ID))
-	if err := c.store.Write(ctx, path, data); err != nil {
+	if err := c.tx.Write(path, data); err != nil {
 		return fmt.Errorf("write registry: %w", err)
 	}
 
@@ -47,14 +47,14 @@ func (c *Crawler) loadPageRegistry(ctx context.Context, pageID string) (*PageReg
 }
 
 // saveFileRegistry saves a file registry to disk.
-func (c *Crawler) saveFileRegistry(ctx context.Context, reg *FileRegistry) error {
+func (c *Crawler) saveFileRegistry(_ context.Context, reg *FileRegistry) error {
 	data, err := json.MarshalIndent(reg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal file registry: %w", err)
 	}
 
 	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("file-%s.json", reg.ID))
-	if err := c.store.Write(ctx, path, data); err != nil {
+	if err := c.tx.Write(path, data); err != nil {
 		return fmt.Errorf("write file registry: %w", err)
 	}
 
