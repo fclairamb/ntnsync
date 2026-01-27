@@ -15,6 +15,29 @@ import (
 	"github.com/fclairamb/ntnsync/internal/apperrors"
 )
 
+// contextKey is a custom type for context keys to avoid collisions.
+type contextKey string
+
+const (
+	// pageIDKey is the context key for storing the current page ID.
+	pageIDKey contextKey = "pageID"
+)
+
+// WithPageID returns a new context with the page ID stored.
+func WithPageID(ctx context.Context, pageID string) context.Context {
+	return context.WithValue(ctx, pageIDKey, pageID)
+}
+
+// PageIDFromContext extracts the page ID from context, returns empty string if not set.
+func PageIDFromContext(ctx context.Context) string {
+	if v := ctx.Value(pageIDKey); v != nil {
+		if pageID, ok := v.(string); ok {
+			return pageID
+		}
+	}
+	return ""
+}
+
 const (
 	// BaseURL is the Notion API base URL.
 	BaseURL = "https://api.notion.com/v1"
@@ -111,7 +134,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, result any) 
 	req.Header.Set("Notion-Version", c.apiVersion)
 	req.Header.Set("Content-Type", "application/json")
 
-	c.logger.DebugContext(ctx, "API request", "method", method, "path", path)
+	logArgs := []any{"method", method, "path", path}
+	if pageID := PageIDFromContext(ctx); pageID != "" {
+		logArgs = append(logArgs, "page_id", pageID)
+	}
+	c.logger.DebugContext(ctx, "API request", logArgs...)
 	startTime := time.Now()
 
 	// Retry with exponential backoff on rate limit
@@ -133,9 +160,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, result any) 
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
-			c.logger.WarnContext(ctx, "rate limited, backing off",
-				"attempt", attempt+1,
-				"backoff", backoff)
+			rateLimitArgs := []any{"attempt", attempt + 1, "backoff", backoff}
+			if pageID := PageIDFromContext(ctx); pageID != "" {
+				rateLimitArgs = append(rateLimitArgs, "page_id", pageID)
+			}
+			c.logger.WarnContext(ctx, "rate limited, backing off", rateLimitArgs...)
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -159,11 +188,11 @@ func (c *Client) do(ctx context.Context, method, path string, body, result any) 
 			}
 		}
 
-		c.logger.DebugContext(ctx, "API response",
-			"method", method,
-			"path", path,
-			"status", resp.StatusCode,
-			"duration", time.Since(startTime))
+		respLogArgs := []any{"method", method, "path", path, "status", resp.StatusCode, "duration", time.Since(startTime)}
+		if pageID := PageIDFromContext(ctx); pageID != "" {
+			respLogArgs = append(respLogArgs, "page_id", pageID)
+		}
+		c.logger.DebugContext(ctx, "API response", respLogArgs...)
 
 		return nil
 	}

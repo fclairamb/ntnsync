@@ -1,4 +1,5 @@
 .env
 /ntnsync
 /notion
+/logs
 *.priv.*

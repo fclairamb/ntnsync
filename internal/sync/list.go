@@ -215,6 +215,11 @@ func (c *Crawler) ScanPage(ctx context.Context, pageID string) error {
 		"page_id", pageID,
 		"new_children_count", len(newChildren))
 
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	// Queue new children
 	entry := queue.Entry{
 		Type:     queueTypeInit,

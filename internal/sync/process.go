@@ -59,6 +59,11 @@ func (c *Crawler) ProcessQueueWithCallback(
 		"max_time", maxTime,
 		"queue_delay", getQueueDelay())
 
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	// Load state
 	if err := c.loadState(ctx); err != nil {
 		c.logger.WarnContext(ctx, "could not load state, starting fresh", "error", err)

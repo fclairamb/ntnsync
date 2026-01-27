@@ -29,6 +29,11 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 		return fmt.Errorf("invalid folder name: %w", err)
 	}
 
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	// Create state directory if needed
 	if err := c.tx.Mkdir(stateDir); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
@@ -179,6 +184,11 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 		return fmt.Errorf("invalid folder name: %w", err)
 	}
 
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	// Create state directory if needed
 	if err := c.tx.Mkdir(stateDir); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
@@ -298,6 +308,11 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 	c.logger.InfoContext(ctx, "getting page",
 		"page_id", pageID,
 		"folder", folder)
+
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
 
 	// Create state directory if needed
 	if err := c.tx.Mkdir(stateDir); err != nil {

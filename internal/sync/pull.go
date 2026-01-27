@@ -242,6 +242,11 @@ func (c *Crawler) queuePagesForPull(
 	ctx context.Context, pagesToQueue map[string][]queue.Page,
 	oldestPageSeen *time.Time, cutoffTime time.Time, result *PullResult,
 ) error {
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	for folder, pages := range pagesToQueue {
 		// Ensure folder is in state
 		c.state.AddFolder(folder)
