@@ -3,6 +3,7 @@ package store
 
 import (
 	"context"
+	"io"
 	"io/fs"
 	"time"
 )
@@ -15,19 +16,14 @@ type FileInfo struct {
 	ModTime time.Time
 }
 
-// Store abstracts read/write file operations.
+// Store abstracts file storage with transactional write operations.
 type Store interface {
 	// Read operations
 	Read(ctx context.Context, path string) ([]byte, error)
 	Exists(ctx context.Context, path string) (bool, error)
 	List(ctx context.Context, dir string) ([]FileInfo, error)
 
-	// Write operations
-	Write(ctx context.Context, path string, content []byte) error
-	Delete(ctx context.Context, path string) error
-	Mkdir(ctx context.Context, path string) error
-
-	// Atomic batch operations (maps to git commits)
+	// Transaction management - all writes go through transactions
 	BeginTx(ctx context.Context) (Transaction, error)
 
 	// Remote operations
@@ -38,12 +34,22 @@ type Store interface {
 	Unlock()
 }
 
-// Transaction groups multiple operations into one commit.
+// Transaction groups multiple write operations.
+// All writes are applied immediately to the filesystem.
+// Commit creates a git commit with all changes. Rollback reverts uncommitted changes.
 type Transaction interface {
-	Write(path string, content []byte) error
-	Delete(path string) error
-	Commit(message string) error
-	Rollback() error
+	// Write operations - applied immediately to filesystem
+	Write(ctx context.Context, path string, content []byte) error
+	WriteStream(ctx context.Context, path string, reader io.Reader) (int64, error)
+	Delete(ctx context.Context, path string) error
+	Mkdir(ctx context.Context, path string) error
+
+	// Commit creates a git commit with all changes made in this transaction.
+	// After commit, the transaction can continue to be used for more changes.
+	Commit(ctx context.Context, message string) error
+
+	// Rollback reverts all uncommitted changes and closes the transaction.
+	Rollback(ctx context.Context) error
 }
 
 // ReadFSProvider returns an fs.FS view for read-only consumers.

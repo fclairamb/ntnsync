@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/fclairamb/ntnsync/internal/converter"
@@ -34,6 +35,7 @@ const (
 type Crawler struct {
 	client       *notion.Client
 	store        store.Store
+	tx           store.Transaction
 	state        *State
 	queueManager *queue.Manager
 	converter    *converter.Converter
@@ -68,4 +70,42 @@ func NewCrawler(client *notion.Client, st store.Store, opts ...CrawlerOption) *C
 	crawler.queueManager.Logger = crawler.logger
 
 	return crawler
+}
+
+// EnsureTransaction ensures a transaction is available.
+// If no transaction exists, creates a new one.
+func (c *Crawler) EnsureTransaction(ctx context.Context) error {
+	if c.tx != nil {
+		return nil
+	}
+	tx, err := c.store.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+	c.tx = tx
+	c.queueManager.SetTransaction(tx)
+	return nil
+}
+
+// SetTransaction sets an external transaction.
+func (c *Crawler) SetTransaction(tx store.Transaction) {
+	c.tx = tx
+	c.queueManager.SetTransaction(tx)
+}
+
+// Commit commits the current transaction with the given message.
+// After commit, a new transaction is automatically started.
+func (c *Crawler) Commit(ctx context.Context, message string) error {
+	if c.tx == nil {
+		return nil
+	}
+	if err := c.tx.Commit(ctx, message); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Transaction returns the current transaction.
+func (c *Crawler) Transaction() store.Transaction {
+	return c.tx
 }

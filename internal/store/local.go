@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -152,67 +153,11 @@ func (s *LocalStore) List(ctx context.Context, dir string) ([]FileInfo, error) {
 	return files, nil
 }
 
-// Write writes content to a file.
-func (s *LocalStore) Write(ctx context.Context, path string, content []byte) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.logger.DebugContext(ctx, "writing file", "path", path, "size", len(content))
-
-	fullPath := filepath.Join(s.rootPath, path)
-	if err := os.MkdirAll(filepath.Dir(fullPath), dirPerm); err != nil {
-		s.logger.DebugContext(ctx, "create parent dir failed", "path", path, "error", err)
-		return fmt.Errorf("create parent dir: %w", err)
-	}
-
-	if err := os.WriteFile(fullPath, content, filePerm); err != nil {
-		s.logger.DebugContext(ctx, "write file failed", "path", path, "error", err)
-		return fmt.Errorf("write file %s: %w", path, err)
-	}
-
-	s.logger.DebugContext(ctx, "write file complete", "path", path)
-	return nil
-}
-
-// Delete deletes a file.
-func (s *LocalStore) Delete(ctx context.Context, path string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.logger.DebugContext(ctx, "deleting file", "path", path)
-
-	fullPath := filepath.Join(s.rootPath, path)
-	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
-		s.logger.DebugContext(ctx, "delete file failed", "path", path, "error", err)
-		return fmt.Errorf("delete file %s: %w", path, err)
-	}
-
-	s.logger.DebugContext(ctx, "delete file complete", "path", path)
-	return nil
-}
-
-// Mkdir creates a directory.
-func (s *LocalStore) Mkdir(ctx context.Context, path string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	s.logger.DebugContext(ctx, "creating directory", "path", path)
-
-	fullPath := filepath.Join(s.rootPath, path)
-	if err := os.MkdirAll(fullPath, dirPerm); err != nil {
-		s.logger.DebugContext(ctx, "create directory failed", "path", path, "error", err)
-		return fmt.Errorf("create directory %s: %w", path, err)
-	}
-
-	s.logger.DebugContext(ctx, "create directory complete", "path", path)
-	return nil
-}
-
 // BeginTx starts a new transaction.
 func (s *LocalStore) BeginTx(_ context.Context) (Transaction, error) {
 	return &localTransaction{
-		store:   s,
-		changes: nil,
+		store:         s,
+		modifiedPaths: make(map[string]bool),
 	}, nil
 }
 
@@ -375,58 +320,145 @@ func (s *LocalStore) TestConnection(ctx context.Context) error {
 }
 
 // localTransaction implements Transaction.
+// All write operations are applied immediately to the filesystem.
+// Commit stages all changes and creates a git commit.
 type localTransaction struct {
-	store     *LocalStore
-	changes   []change
-	mu        sync.Mutex
-	committed bool
+	store         *LocalStore
+	modifiedPaths map[string]bool // tracks paths modified since last commit
+	mu            sync.Mutex
+	closed        bool
 }
 
-type change struct {
-	path    string
-	content []byte // nil means delete
-}
-
-// Write stages a file write.
-func (t *localTransaction) Write(path string, content []byte) error {
+// Write writes content to a file immediately.
+func (t *localTransaction) Write(_ context.Context, path string, content []byte) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.committed {
+	if t.closed {
 		return apperrors.ErrTransactionCommitted
 	}
 
-	t.changes = append(t.changes, change{
-		path:    path,
-		content: content,
-	})
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+
+	fullPath := filepath.Join(t.store.rootPath, path)
+	if err := os.MkdirAll(filepath.Dir(fullPath), dirPerm); err != nil {
+		return fmt.Errorf("create parent dir: %w", err)
+	}
+
+	if err := os.WriteFile(fullPath, content, filePerm); err != nil {
+		return fmt.Errorf("write file %s: %w", path, err)
+	}
+
+	t.modifiedPaths[path] = true
+	return nil
+}
+
+// WriteStream writes content from a reader to a file using streaming.
+// This avoids loading the entire content into memory.
+// Returns the number of bytes written.
+func (t *localTransaction) WriteStream(_ context.Context, path string, reader io.Reader) (int64, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.closed {
+		return 0, apperrors.ErrTransactionCommitted
+	}
+
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+
+	fullPath := filepath.Join(t.store.rootPath, path)
+	if err := os.MkdirAll(filepath.Dir(fullPath), dirPerm); err != nil {
+		return 0, fmt.Errorf("create parent dir: %w", err)
+	}
+
+	// Write to temp file first, then rename for atomicity
+	tmpFile, err := os.CreateTemp(filepath.Dir(fullPath), ".tmp-*")
+	if err != nil {
+		return 0, fmt.Errorf("create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+
+	// Ensure cleanup on failure
+	success := false
+	defer func() {
+		_ = tmpFile.Close()
+		if !success {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	written, err := io.Copy(tmpFile, reader)
+	if err != nil {
+		return written, fmt.Errorf("write content: %w", err)
+	}
+
+	if err := tmpFile.Close(); err != nil {
+		return written, fmt.Errorf("close temp file: %w", err)
+	}
+
+	if err := os.Chmod(tmpPath, filePerm); err != nil {
+		return written, fmt.Errorf("set permissions: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, fullPath); err != nil {
+		return written, fmt.Errorf("rename temp file: %w", err)
+	}
+
+	success = true
+	t.modifiedPaths[path] = true
+	return written, nil
+}
+
+// Delete deletes a file immediately.
+func (t *localTransaction) Delete(_ context.Context, path string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.closed {
+		return apperrors.ErrTransactionCommitted
+	}
+
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+
+	fullPath := filepath.Join(t.store.rootPath, path)
+	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("delete file %s: %w", path, err)
+	}
+
+	t.modifiedPaths[path] = true
+	return nil
+}
+
+// Mkdir creates a directory.
+func (t *localTransaction) Mkdir(_ context.Context, path string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.closed {
+		return apperrors.ErrTransactionCommitted
+	}
+
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+
+	fullPath := filepath.Join(t.store.rootPath, path)
+	if err := os.MkdirAll(fullPath, dirPerm); err != nil {
+		return fmt.Errorf("create directory %s: %w", path, err)
+	}
 
 	return nil
 }
 
-// Delete stages a file deletion.
-func (t *localTransaction) Delete(path string) error {
+// Commit stages all changes and creates a git commit.
+// After commit, the transaction can continue to be used for more changes.
+func (t *localTransaction) Commit(_ context.Context, message string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.committed {
-		return apperrors.ErrTransactionCommitted
-	}
-
-	t.changes = append(t.changes, change{
-		path:    path,
-		content: nil,
-	})
-
-	return nil
-}
-
-// Commit applies all changes and creates a git commit.
-func (t *localTransaction) Commit(message string) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.committed {
+	if t.closed {
 		return apperrors.ErrTransactionCommitted
 	}
 
@@ -436,14 +468,6 @@ func (t *localTransaction) Commit(message string) error {
 	worktree, err := t.store.repo.Worktree()
 	if err != nil {
 		return fmt.Errorf("get worktree: %w", err)
-	}
-
-	// Apply all changes tracked in this transaction
-	for i := range t.changes {
-		change := &t.changes[i]
-		if applyErr := t.applyChange(change, worktree); applyErr != nil {
-			return applyErr
-		}
 	}
 
 	// Stage all changes in the worktree (equivalent to git add -A)
@@ -466,7 +490,8 @@ func (t *localTransaction) Commit(message string) error {
 	}
 
 	if !hasChanges {
-		t.committed = true
+		// Clear modified paths since there's nothing to commit
+		t.modifiedPaths = make(map[string]bool)
 		return nil
 	}
 
@@ -490,47 +515,38 @@ func (t *localTransaction) Commit(message string) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 
-	t.committed = true
+	// Clear modified paths after successful commit
+	t.modifiedPaths = make(map[string]bool)
 	return nil
 }
 
-// Rollback discards all pending changes.
-func (t *localTransaction) Rollback() error {
+// Rollback discards all uncommitted changes and closes the transaction.
+func (t *localTransaction) Rollback(_ context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	t.changes = nil
-	t.committed = true
-	return nil
-}
-
-// applyChange applies a single change (write or delete) to the filesystem and git worktree.
-func (t *localTransaction) applyChange(change *change, worktree *git.Worktree) error {
-	fullPath := filepath.Join(t.store.rootPath, change.path)
-
-	if change.content == nil {
-		// Delete
-		if rmErr := os.Remove(fullPath); rmErr != nil && !os.IsNotExist(rmErr) {
-			return fmt.Errorf("delete %s: %w", change.path, rmErr)
-		}
-		// Try to remove from git, ignore errors if file wasn't tracked
-		_, _ = worktree.Remove(change.path)
+	if t.closed {
 		return nil
 	}
 
-	// Write
-	if mkErr := os.MkdirAll(filepath.Dir(fullPath), dirPerm); mkErr != nil {
-		return fmt.Errorf("mkdir for %s: %w", change.path, mkErr)
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+
+	// Reset the working directory to HEAD
+	worktree, err := t.store.repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("get worktree: %w", err)
 	}
 
-	if wrErr := os.WriteFile(fullPath, change.content, filePerm); wrErr != nil {
-		return fmt.Errorf("write %s: %w", change.path, wrErr)
+	// Only reset if there are changes
+	if len(t.modifiedPaths) > 0 {
+		if err := worktree.Reset(&git.ResetOptions{Mode: git.HardReset}); err != nil {
+			return fmt.Errorf("reset worktree: %w", err)
+		}
 	}
 
-	if _, addErr := worktree.Add(change.path); addErr != nil {
-		return fmt.Errorf("git add %s: %w", change.path, addErr)
-	}
-
+	t.modifiedPaths = nil
+	t.closed = true
 	return nil
 }
 

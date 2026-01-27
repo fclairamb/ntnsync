@@ -267,13 +267,21 @@ func (h *Handler) processEvent(ctx context.Context, event *Event) {
 		"entity_type", event.GetEntityType(),
 		"workspace", event.WorkspaceName)
 
+	// Create a transaction for write operations
+	transaction, err := h.store.BeginTx(ctx)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "failed to begin transaction", "error", err)
+		return
+	}
+	h.queueManager.SetTransaction(transaction)
+
 	switch event.Type {
 	case "page.created", "page.updated", "page.content_updated", "page.properties_updated":
-		h.handlePageChange(ctx, event)
+		h.handlePageChange(ctx, event, transaction)
 	case "page.deleted", "page.undeleted":
 		h.handlePageDeletion(ctx, event)
 	case "database.created", "database.updated", "database.content_updated", "database.properties_updated":
-		h.handleDatabaseChange(ctx, event)
+		h.handleDatabaseChange(ctx, event, transaction)
 	case "database.deleted", "database.undeleted":
 		h.handleDatabaseDeletion(ctx, event)
 	case "":
@@ -286,7 +294,7 @@ func (h *Handler) processEvent(ctx context.Context, event *Event) {
 }
 
 // handlePageChange handles page.created, page.updated, and page.content_updated events.
-func (h *Handler) handlePageChange(ctx context.Context, event *Event) {
+func (h *Handler) handlePageChange(ctx context.Context, event *Event, transaction store.Transaction) {
 	pageID := event.GetEntityID()
 	if pageID == "" {
 		h.logger.WarnContext(ctx, "page change event missing entity ID")
@@ -330,7 +338,7 @@ func (h *Handler) handlePageChange(ctx context.Context, event *Event) {
 		"folder", folder)
 
 	// Commit queue files immediately
-	h.commitQueueFiles(ctx, "queued page "+pageID)
+	h.commitQueueFiles(ctx, transaction, "queued page "+pageID)
 
 	// Notify sync worker if configured
 	if h.syncWorker != nil {
@@ -362,7 +370,7 @@ func (h *Handler) handlePageDeletion(ctx context.Context, event *Event) {
 }
 
 // handleDatabaseChange handles database.* events.
-func (h *Handler) handleDatabaseChange(ctx context.Context, event *Event) {
+func (h *Handler) handleDatabaseChange(ctx context.Context, event *Event, transaction store.Transaction) {
 	databaseID := event.GetEntityID()
 	if databaseID == "" {
 		h.logger.WarnContext(ctx, "database change event missing entity ID")
@@ -397,7 +405,7 @@ func (h *Handler) handleDatabaseChange(ctx context.Context, event *Event) {
 		"folder", folder)
 
 	// Commit queue files immediately
-	h.commitQueueFiles(ctx, "queued database "+databaseID)
+	h.commitQueueFiles(ctx, transaction, "queued database "+databaseID)
 
 	// Notify sync worker if configured
 	if h.syncWorker != nil {
@@ -448,7 +456,7 @@ func (h *Handler) lookupPageFolder(ctx context.Context, pageID string) (string, 
 
 // commitQueueFiles commits webhook queue files to git immediately and pushes to remote.
 // This ensures queue files are persisted before sync processing begins.
-func (h *Handler) commitQueueFiles(ctx context.Context, description string) {
+func (h *Handler) commitQueueFiles(ctx context.Context, transaction store.Transaction, description string) {
 	// Only commit if remote config is available and commits are enabled
 	if h.remoteConfig == nil || !h.remoteConfig.IsCommitEnabled() {
 		return
@@ -456,14 +464,8 @@ func (h *Handler) commitQueueFiles(ctx context.Context, description string) {
 
 	h.logger.DebugContext(ctx, "committing webhook queue files", "description", description)
 
-	transaction, err := h.store.BeginTx(ctx)
-	if err != nil {
-		h.logger.WarnContext(ctx, "failed to begin transaction for queue commit", "error", err)
-		return
-	}
-
 	message := "[ntnsync] webhook: " + description
-	if err := transaction.Commit(message); err != nil {
+	if err := transaction.Commit(ctx, message); err != nil {
 		h.logger.WarnContext(ctx, "failed to commit queue files", "error", err)
 		return
 	}

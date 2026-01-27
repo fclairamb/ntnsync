@@ -41,9 +41,16 @@ func TestProcessQueue_MaxQueueFiles_DeletedFilesAreCounted(t *testing.T) {
 		}
 	}
 
-	// Create queue manager
-	qm := queue.NewManager(st, slog.Default())
+	// Create transaction
 	ctx := context.Background()
+	tx, err := st.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("failed to begin transaction: %v", err)
+	}
+
+	// Create queue manager with transaction
+	qm := queue.NewManager(st, slog.Default())
+	qm.SetTransaction(tx)
 
 	// Create a page registry so the page appears to already exist and be up-to-date
 	// This will cause it to be skipped when using new format entries
@@ -83,6 +90,7 @@ func TestProcessQueue_MaxQueueFiles_DeletedFilesAreCounted(t *testing.T) {
 
 	// Create crawler without client (pages will be skipped due to registry, no API call needed)
 	crawler := NewCrawler(nil, st, WithCrawlerLogger(slog.Default()))
+	crawler.SetTransaction(tx)
 
 	// Process with maxQueueFiles=1
 	err = crawler.ProcessQueue(ctx, "", 0, 0, 1, 0)

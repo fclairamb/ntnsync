@@ -62,6 +62,7 @@ func (qe *Entry) GetPageCount() int {
 // Manager handles queue file operations.
 type Manager struct {
 	store  store.Store
+	tx     store.Transaction
 	Logger *slog.Logger
 }
 
@@ -71,6 +72,11 @@ func NewManager(st store.Store, logger *slog.Logger) *Manager {
 		store:  st,
 		Logger: logger,
 	}
+}
+
+// SetTransaction sets the transaction to use for write operations.
+func (qm *Manager) SetTransaction(tx store.Transaction) {
+	qm.tx = tx
 }
 
 // CreateEntry creates new queue file(s) with the next sequential number(s).
@@ -142,7 +148,7 @@ func (qm *Manager) UpdateEntry(ctx context.Context, filename string, entry *Entr
 	}
 
 	path := filepath.Join(queueDir, filename)
-	if err := qm.store.Write(ctx, path, data); err != nil {
+	if err := qm.tx.Write(ctx, path, data); err != nil {
 		return fmt.Errorf("write queue file: %w", err)
 	}
 
@@ -154,7 +160,7 @@ func (qm *Manager) DeleteEntry(ctx context.Context, filename string) error {
 	qm.Logger.DebugContext(ctx, "deleting queue entry", "filename", filename)
 
 	path := filepath.Join(queueDir, filename)
-	if err := qm.store.Delete(ctx, path); err != nil {
+	if err := qm.tx.Delete(ctx, path); err != nil {
 		return fmt.Errorf("delete queue file: %w", err)
 	}
 
@@ -277,7 +283,7 @@ func (qm *Manager) CreateWebhookEntry(ctx context.Context, pageID, folder string
 
 	// Write queue file
 	path := filepath.Join(queueDir, filename)
-	if err := qm.store.Write(ctx, path, data); err != nil {
+	if err := qm.tx.Write(ctx, path, data); err != nil {
 		return "", fmt.Errorf("write queue file: %w", err)
 	}
 
@@ -362,7 +368,7 @@ func (qm *Manager) createChunkEntryNewFormat(
 	}
 
 	path := filepath.Join(queueDir, filename)
-	if err := qm.store.Write(ctx, path, data); err != nil {
+	if err := qm.tx.Write(ctx, path, data); err != nil {
 		return "", fmt.Errorf("write queue file: %w", err)
 	}
 
@@ -397,7 +403,7 @@ func (qm *Manager) createChunkEntryLegacy(ctx context.Context, entry Entry, chun
 	}
 
 	path := filepath.Join(queueDir, filename)
-	if err := qm.store.Write(ctx, path, data); err != nil {
+	if err := qm.tx.Write(ctx, path, data); err != nil {
 		return "", fmt.Errorf("write queue file: %w", err)
 	}
 

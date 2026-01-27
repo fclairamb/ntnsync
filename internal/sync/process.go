@@ -59,6 +59,11 @@ func (c *Crawler) ProcessQueueWithCallback(
 		"max_time", maxTime,
 		"queue_delay", getQueueDelay())
 
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	// Load state
 	if err := c.loadState(ctx); err != nil {
 		c.logger.WarnContext(ctx, "could not load state, starting fresh", "error", err)
@@ -624,7 +629,7 @@ func (c *Crawler) processPage(
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write file
-	if err := c.store.Write(ctx, filePath, content); err != nil {
+	if err := c.tx.Write(ctx, filePath, content); err != nil {
 		return 0, fmt.Errorf("write page: %w", err)
 	}
 	filesWritten++ // Count this file write
@@ -787,7 +792,7 @@ func (c *Crawler) processDatabase(
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write file
-	if err := c.store.Write(ctx, filePath, content); err != nil {
+	if err := c.tx.Write(ctx, filePath, content); err != nil {
 		return 0, fmt.Errorf("write database: %w", err)
 	}
 	filesWritten++ // Count this file write

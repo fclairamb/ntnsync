@@ -29,8 +29,13 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 		return fmt.Errorf("invalid folder name: %w", err)
 	}
 
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	// Create state directory if needed
-	if err := c.store.Mkdir(ctx, stateDir); err != nil {
+	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}
 
@@ -64,7 +69,7 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 	c.state.AddFolder(folder)
 
 	// Create folder directory
-	if err := c.store.Mkdir(ctx, folder); err != nil {
+	if err := c.tx.Mkdir(ctx, folder); err != nil {
 		return fmt.Errorf("create folder dir: %w", err)
 	}
 
@@ -96,7 +101,7 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write the database file
-	if err := c.store.Write(ctx, filePath, content); err != nil {
+	if err := c.tx.Write(ctx, filePath, content); err != nil {
 		return fmt.Errorf("write database: %w", err)
 	}
 
@@ -179,8 +184,13 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 		return fmt.Errorf("invalid folder name: %w", err)
 	}
 
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	// Create state directory if needed
-	if err := c.store.Mkdir(ctx, stateDir); err != nil {
+	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}
 
@@ -208,7 +218,7 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 	filePath := c.computeFilePath(ctx, page, folder, true, "")
 
 	// Create folder directory
-	if err := c.store.Mkdir(ctx, folder); err != nil {
+	if err := c.tx.Mkdir(ctx, folder); err != nil {
 		return fmt.Errorf("create folder dir: %w", err)
 	}
 
@@ -230,7 +240,7 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write the file
-	if err := c.store.Write(ctx, filePath, content); err != nil {
+	if err := c.tx.Write(ctx, filePath, content); err != nil {
 		return fmt.Errorf("write page: %w", err)
 	}
 
@@ -299,8 +309,13 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 		"page_id", pageID,
 		"folder", folder)
 
+	// Ensure transaction is available
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
 	// Create state directory if needed
-	if err := c.store.Mkdir(ctx, stateDir); err != nil {
+	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
 		return fmt.Errorf("create state dir: %w", err)
 	}
 
@@ -536,7 +551,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 
 	// Create directory if needed
 	dir := filepath.Dir(filePath)
-	if err := c.store.Mkdir(ctx, dir); err != nil {
+	if err := c.tx.Mkdir(ctx, dir); err != nil {
 		return fmt.Errorf("create dir %s: %w", dir, err)
 	}
 
@@ -559,7 +574,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write the file
-	if err := c.store.Write(ctx, filePath, content); err != nil {
+	if err := c.tx.Write(ctx, filePath, content); err != nil {
 		return fmt.Errorf("write page: %w", err)
 	}
 
@@ -664,7 +679,7 @@ func (c *Crawler) saveDatabaseFromNotion(ctx context.Context, databaseID, folder
 
 	// Create directory if needed
 	dir := filepath.Dir(filePath)
-	if err := c.store.Mkdir(ctx, dir); err != nil {
+	if err := c.tx.Mkdir(ctx, dir); err != nil {
 		return fmt.Errorf("create dir %s: %w", dir, err)
 	}
 
@@ -687,7 +702,7 @@ func (c *Crawler) saveDatabaseFromNotion(ctx context.Context, databaseID, folder
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write the file
-	if err := c.store.Write(ctx, filePath, content); err != nil {
+	if err := c.tx.Write(ctx, filePath, content); err != nil {
 		return fmt.Errorf("write database: %w", err)
 	}
 

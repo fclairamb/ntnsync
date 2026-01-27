@@ -107,7 +107,8 @@ func extractFileIDFromURL(rawURL string) string {
 	return ""
 }
 
-// downloadFile downloads a file from URL and saves it locally.
+// downloadFile downloads a file from URL and saves it locally using streaming.
+// This avoids loading the entire file into memory.
 // Respects NTN_MAX_FILE_SIZE environment variable (default 5MB).
 func (c *Crawler) downloadFile(ctx context.Context, fileURL, localPath string) error {
 	maxSize := getMaxFileSize()
@@ -166,33 +167,29 @@ func (c *Crawler) downloadFile(ctx context.Context, fileURL, localPath string) e
 	}
 
 	// Use LimitReader as a safety net (server might send more than advertised)
+	// Stream directly to file instead of loading into memory
 	limitedReader := io.LimitReader(resp.Body, maxSize+1)
-	data, err := io.ReadAll(limitedReader)
+
+	written, err := c.tx.WriteStream(ctx, localPath, limitedReader)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
-	}
-
-	// Check if we hit the limit
-	if int64(len(data)) > maxSize {
-		c.logger.WarnContext(ctx, "file exceeds size limit during download, skipping",
-			"url", fileURL,
-			"size_read", formatBytes(int64(len(data))),
-			"limit", formatBytes(maxSize),
-		)
-		return ErrFileTooLarge
-	}
-
-	// Create directory if needed
-	dir := filepath.Dir(localPath)
-	if err := c.store.Mkdir(ctx, dir); err != nil {
-		return fmt.Errorf("create dir %s: %w", dir, err)
-	}
-
-	if err := c.store.Write(ctx, localPath, data); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
 
-	c.logger.InfoContext(ctx, "downloaded file", "path", localPath, "size", formatBytes(int64(len(data))))
+	// Check if we hit the limit (file was larger than max size)
+	if written > maxSize {
+		c.logger.WarnContext(ctx, "file exceeds size limit during download, removing",
+			"url", fileURL,
+			"size_read", formatBytes(written),
+			"limit", formatBytes(maxSize),
+		)
+		// Clean up the oversized file
+		if delErr := c.tx.Delete(ctx, localPath); delErr != nil {
+			c.logger.WarnContext(ctx, "failed to delete oversized file", "path", localPath, "error", delErr)
+		}
+		return ErrFileTooLarge
+	}
+
+	c.logger.InfoContext(ctx, "downloaded file", "path", localPath, "size", formatBytes(written))
 	return nil
 }
 
@@ -331,7 +328,7 @@ func (c *Crawler) processFileURL(ctx context.Context, fileURL, pageFilePath, pag
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err == nil {
 		manifestPath := localPath + ".meta.json"
-		if err := c.store.Write(ctx, manifestPath, manifestData); err != nil {
+		if err := c.tx.Write(ctx, manifestPath, manifestData); err != nil {
 			c.logger.WarnContext(ctx, "failed to write file manifest", "error", err)
 		}
 	}

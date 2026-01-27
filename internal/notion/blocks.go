@@ -34,7 +34,16 @@ func (c *Client) GetBlockChildren(ctx context.Context, blockID string, cursor st
 
 // GetAllBlockChildren retrieves all children of a block recursively.
 func (c *Client) GetAllBlockChildren(ctx context.Context, blockID string) ([]Block, error) {
-	c.logger.DebugContext(ctx, "fetching all block children", "block_id", blockID)
+	// Store pageId in context on first call (when blockID is the page itself)
+	if PageIDFromContext(ctx) == "" {
+		ctx = WithPageID(ctx, blockID)
+	}
+
+	logArgs := []any{"block_id", blockID}
+	if pageID := PageIDFromContext(ctx); pageID != "" {
+		logArgs = append(logArgs, "page_id", pageID)
+	}
+	c.logger.DebugContext(ctx, "fetching all block children", logArgs...)
 
 	var allBlocks []Block
 	var cursor string
@@ -51,9 +60,11 @@ func (c *Client) GetAllBlockChildren(ctx context.Context, blockID string) ([]Blo
 			if block.HasChildren {
 				children, err := c.GetAllBlockChildren(ctx, block.ID)
 				if err != nil {
-					c.logger.WarnContext(ctx, "failed to get block children",
-						"block_id", block.ID,
-						"error", err)
+					warnArgs := []any{"block_id", block.ID, "error", err}
+					if pageID := PageIDFromContext(ctx); pageID != "" {
+						warnArgs = append(warnArgs, "page_id", pageID)
+					}
+					c.logger.WarnContext(ctx, "failed to get block children", warnArgs...)
 					// Continue without children rather than failing
 				} else {
 					block.Children = children
@@ -68,6 +79,10 @@ func (c *Client) GetAllBlockChildren(ctx context.Context, blockID string) ([]Blo
 		cursor = *result.NextCursor
 	}
 
-	c.logger.DebugContext(ctx, "fetched all block children", "block_id", blockID, "count", len(allBlocks))
+	doneLogArgs := []any{"block_id", blockID, "count", len(allBlocks)}
+	if pageID := PageIDFromContext(ctx); pageID != "" {
+		doneLogArgs = append(doneLogArgs, "page_id", pageID)
+	}
+	c.logger.DebugContext(ctx, "fetched all block children", doneLogArgs...)
 	return allBlocks, nil
 }

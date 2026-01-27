@@ -16,7 +16,7 @@ func (c *Crawler) savePageRegistry(ctx context.Context, reg *PageRegistry) error
 	}
 
 	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("page-%s.json", reg.ID))
-	if err := c.store.Write(ctx, path, data); err != nil {
+	if err := c.tx.Write(ctx, path, data); err != nil {
 		return fmt.Errorf("write registry: %w", err)
 	}
 
@@ -54,7 +54,7 @@ func (c *Crawler) saveFileRegistry(ctx context.Context, reg *FileRegistry) error
 	}
 
 	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("file-%s.json", reg.ID))
-	if err := c.store.Write(ctx, path, data); err != nil {
+	if err := c.tx.Write(ctx, path, data); err != nil {
 		return fmt.Errorf("write file registry: %w", err)
 	}
 
