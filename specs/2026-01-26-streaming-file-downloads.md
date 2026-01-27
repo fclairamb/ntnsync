@@ -78,6 +78,8 @@ The `Crawler` struct now holds a `tx` field and provides:
 - `SetTransaction(tx)` - sets external transaction
 - `Commit(ctx, message)` - commits current transaction
 
+All entry point methods (`AddDatabase`, `AddRootPage`, `GetPage`, `ProcessQueue`, `Pull`, `Reindex`, `ScanPage`) call `EnsureTransaction` before performing write operations, ensuring transactions are always available when needed.
+
 ## Benefits
 
 - **Constant memory usage**: File downloads use only buffer-sized memory (~32KB) regardless of file size
