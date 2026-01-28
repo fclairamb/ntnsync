@@ -522,42 +522,46 @@ func (c *Crawler) resolveAndFetchParent(
 			itemType, itemID,
 			"resolved_parent_id", resolvedID)
 		// Now try to fetch/process the resolved parent
-		if _, loadErr := c.loadPageRegistry(ctx, resolvedID); loadErr != nil {
-			// Resolved parent not in registry
-			if isInit {
-				// In init mode, queue the resolved parent for later
-				c.logger.InfoContext(ctx, "resolved parent not in registry, queuing for later (init mode)",
-					itemType, itemID,
-					"resolved_parent_id", resolvedID)
+		if _, loadErr := c.loadPageRegistry(ctx, resolvedID); loadErr == nil {
+			// Resolved parent is in registry, we're done
+			return result, nil
+		}
 
-				if _, queueErr := c.queueManager.CreateEntry(ctx, queue.Entry{
-					Type:     queueTypeInit,
-					Folder:   folder,
-					PageIDs:  []string{resolvedID},
-					ParentID: "",
-				}); queueErr != nil {
-					c.logger.WarnContext(ctx, "failed to queue resolved parent",
-						"parent_id", resolvedID,
-						"error", queueErr)
-				}
+		// Resolved parent not in registry
+		if isInit {
+			// In init mode, queue the resolved parent for later
+			c.logger.InfoContext(ctx, "resolved parent not in registry, queuing for later (init mode)",
+				itemType, itemID,
+				"resolved_parent_id", resolvedID)
 
-				// Treat child as root for now
-				result.isRoot = true
-				result.parentID = ""
-			} else {
-				// In update mode, fetch immediately
-				resolvedParentFiles, fetchErr := c.processPage(ctx, resolvedID, folder, isInit, "")
-				if fetchErr != nil {
-					c.logger.ErrorContext(ctx, "failed to fetch resolved parent, treating as root",
-						itemType, itemID,
-						"parent_id", resolvedID,
-						"error", fetchErr)
-					result.isRoot = true
-					result.parentID = ""
-				} else {
-					result.filesWritten = resolvedParentFiles
-				}
+			if _, queueErr := c.queueManager.CreateEntry(ctx, queue.Entry{
+				Type:     queueTypeInit,
+				Folder:   folder,
+				PageIDs:  []string{resolvedID},
+				ParentID: "",
+			}); queueErr != nil {
+				c.logger.WarnContext(ctx, "failed to queue resolved parent",
+					"parent_id", resolvedID,
+					"error", queueErr)
 			}
+
+			// Treat child as root for now
+			result.isRoot = true
+			result.parentID = ""
+			return result, nil
+		}
+
+		// In update mode, fetch immediately
+		resolvedParentFiles, fetchErr := c.processPage(ctx, resolvedID, folder, isInit, "")
+		if fetchErr != nil {
+			c.logger.ErrorContext(ctx, "failed to fetch resolved parent, treating as root",
+				itemType, itemID,
+				"parent_id", resolvedID,
+				"error", fetchErr)
+			result.isRoot = true
+			result.parentID = ""
+		} else {
+			result.filesWritten = resolvedParentFiles
 		}
 	}
 
@@ -764,7 +768,9 @@ func (c *Crawler) processDatabase(
 	if err != nil {
 		return 0, fmt.Errorf("fetch database: %w", err)
 	}
-	c.logger.DebugContext(ctx, "fetched database metadata", "database_id", databaseID, "duration_ms", fetchDBDuration.Milliseconds())
+	c.logger.DebugContext(ctx, "fetched database metadata",
+		"database_id", databaseID,
+		"duration_ms", fetchDBDuration.Milliseconds())
 
 	// Query all pages in the database
 	queryDBStart := time.Now()
