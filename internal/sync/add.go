@@ -206,7 +206,7 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 	}
 
 	// Fetch blocks to get content
-	blocks, err := c.client.GetAllBlockChildren(ctx, pageID)
+	blocks, err := c.client.GetAllBlockChildren(ctx, pageID, 0)
 	if err != nil {
 		return fmt.Errorf("fetch blocks: %w", err)
 	}
@@ -521,7 +521,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 
 	// Check if this is actually a database by trying to fetch blocks
 	// If it fails with database error, save as database instead
-	blocks, err := c.client.GetAllBlockChildren(ctx, pageID)
+	blocks, err := c.client.GetAllBlockChildren(ctx, pageID, 0)
 	if err != nil && strings.Contains(err.Error(), "is a database, not a page") {
 		c.logger.DebugContext(ctx, "detected database, saving as database", "page_id", pageID)
 		return c.saveDatabaseFromNotion(ctx, pageID, folder, isRoot)

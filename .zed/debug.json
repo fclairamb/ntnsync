@@ -1,0 +1,19 @@
+[
+  {
+    "label": "Debug ntnsync serve",
+    "adapter": "Delve",
+    "request": "launch",
+    "mode": "debug",
+    "program": "${ZED_WORKTREE_ROOT}",
+    "args": ["serve", "--verbose"],
+    "env": {
+      "NTN_GIT_URL": "https://github.com/fclairamb/res-notion-test.git",
+      "NTN_GIT_PASS": "${env:GITHUB_TOKEN}",
+      "NTN_DIR": "/tmp/ntnsync",
+      "NTN_COMMIT": "true",
+      "NTN_PUSH": "true",
+      "NTN_COMMIT_PERIOD": "30s",
+      "NTN_LOG_FORMAT": "json",
+    },
+  },
+]

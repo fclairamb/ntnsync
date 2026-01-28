@@ -559,7 +559,7 @@ func (c *Crawler) processPage(
 	}
 
 	// Fetch blocks
-	blocks, err := c.client.GetAllBlockChildren(ctx, pageID)
+	blocks, err := c.client.GetAllBlockChildren(ctx, pageID, 0)
 	if err != nil {
 		return 0, fmt.Errorf("fetch blocks: %w", err)
 	}
