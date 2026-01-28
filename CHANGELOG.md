@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/fclairamb/ntnsync/compare/v0.3.1...v0.4.0) (2026-01-28)
+
+
+### Features
+
+* **store:** add streaming file downloads to reduce memory usage ([#18](https://github.com/fclairamb/ntnsync/issues/18)) ([aaa730d](https://github.com/fclairamb/ntnsync/commit/aaa730d80bb09f215f628fc8159851ce0370de5b))
+* **sync:** transliterate accented characters in filenames ([#21](https://github.com/fclairamb/ntnsync/issues/21)) ([2975e22](https://github.com/fclairamb/ntnsync/commit/2975e222e3937d0a18d720cff1c0c5c222ebcf9e))
+
+
+### Performance Improvements
+
+* optimize queue processing performance ([#20](https://github.com/fclairamb/ntnsync/issues/20)) ([c721a3a](https://github.com/fclairamb/ntnsync/commit/c721a3a02fe46fca39878cdd17b60ea94af86679))
+
 ## [0.3.1](https://github.com/fclairamb/ntnsync/compare/v0.3.0...v0.3.1) (2026-01-25)
 
 
