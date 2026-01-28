@@ -1,11 +1,21 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", ":semanticCommits"],
-  "labels": ["deps"],
-  "postUpdateOptions": ["gomodUpdateImportPaths"],
+  "extends": [
+    "config:recommended",
+    ":semanticCommits"
+  ],
+  "labels": [
+    "deps"
+  ],
+  "postUpdateOptions": [
+    "gomodUpdateImportPaths"
+  ],
   "packageRules": [
     {
-      "matchUpdateTypes": ["minor", "patch"],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
       "matchCurrentVersion": "!/^0/",
       "automergeStrategy": "squash",
       "automerge": true,
@@ -13,9 +23,13 @@
     },
     {
       "description": "Group koanf packages",
-      "matchDatasources": ["go"],
-      "matchDepPatterns": ["^github.com/knadh/koanf(/.*)?$"],
-      "groupName": "koanf"
+      "matchDatasources": [
+        "go"
+      ],
+      "groupName": "koanf",
+      "matchDepNames": [
+        "/^github.com/knadh/koanf(/.*)?$/"
+      ]
     }
   ]
 }
