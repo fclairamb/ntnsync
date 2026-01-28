@@ -235,14 +235,34 @@ func TestSanitizeFilename_UnicodeChars(t *testing.T) {
 			want:  "mypage",
 		},
 		{
-			name:  "accented chars removed",
+			name:  "accented chars transliterated",
 			input: "café",
-			want:  "caf",
+			want:  "cafe",
 		},
 		{
-			name:  "mixed unicode",
+			name:  "mixed unicode with accents",
 			input: "test😊café🎉",
-			want:  "testcaf",
+			want:  "testcafe",
+		},
+		{
+			name:  "french accents",
+			input: "échanges à venirs",
+			want:  "echanges-a-venirs",
+		},
+		{
+			name:  "various accented chars",
+			input: "naïve façade résumé",
+			want:  "naive-facade-resume",
+		},
+		{
+			name:  "german umlaut",
+			input: "über",
+			want:  "uber",
+		},
+		{
+			name:  "spanish tilde",
+			input: "piñata",
+			want:  "pinata",
 		},
 	}
 

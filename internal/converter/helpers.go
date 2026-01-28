@@ -2,6 +2,11 @@ package converter
 
 import (
 	"strings"
+	"unicode"
+
+	"golang.org/x/text/runes"
+	"golang.org/x/text/transform"
+	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -9,10 +14,23 @@ const (
 	maxFilenameLength = 100 // Maximum filename length before truncation
 )
 
+// transliterate converts accented characters to their ASCII equivalents.
+// Uses Unicode NFD normalization to decompose characters like é into e + combining accent,
+// then removes the combining marks.
+func transliterate(s string) string {
+	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
+	result, _, _ := transform.String(t, s)
+
+	return result
+}
+
 // SanitizeFilename makes a string safe for use as a filename.
 // Only allows pattern [a-z][a-z0-9-]* (lowercase letters, numbers, hyphens).
 // Must start with a letter.
 func SanitizeFilename(name string) string {
+	// Transliterate accented characters to ASCII equivalents
+	name = transliterate(name)
+
 	// Convert to lowercase
 	name = strings.ToLower(name)
 
