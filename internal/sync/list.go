@@ -180,7 +180,7 @@ func (c *Crawler) ScanPage(ctx context.Context, pageID string) error {
 	folder := reg.Folder
 
 	// Fetch blocks to discover children
-	blocks, err := c.client.GetAllBlockChildren(ctx, pageID)
+	blocks, err := c.client.GetAllBlockChildren(ctx, pageID, 0)
 	if err != nil {
 		return fmt.Errorf("fetch blocks: %w", err)
 	}

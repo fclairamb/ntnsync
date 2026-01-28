@@ -33,13 +33,13 @@ func (c *Client) GetBlockChildren(ctx context.Context, blockID string, cursor st
 }
 
 // GetAllBlockChildren retrieves all children of a block recursively.
-func (c *Client) GetAllBlockChildren(ctx context.Context, blockID string) ([]Block, error) {
+func (c *Client) GetAllBlockChildren(ctx context.Context, blockID string, depth int) ([]Block, error) {
 	// Store pageId in context on first call (when blockID is the page itself)
 	if PageIDFromContext(ctx) == "" {
 		ctx = WithPageID(ctx, blockID)
 	}
 
-	logArgs := []any{"block_id", blockID}
+	logArgs := []any{"block_id", blockID, "depth", depth}
 	if pageID := PageIDFromContext(ctx); pageID != "" {
 		logArgs = append(logArgs, "page_id", pageID)
 	}
@@ -58,9 +58,9 @@ func (c *Client) GetAllBlockChildren(ctx context.Context, blockID string) ([]Blo
 		for i := range result.Results {
 			block := &result.Results[i]
 			if block.HasChildren {
-				children, err := c.GetAllBlockChildren(ctx, block.ID)
+				children, err := c.GetAllBlockChildren(ctx, block.ID, depth+1)
 				if err != nil {
-					warnArgs := []any{"block_id", block.ID, "error", err}
+					warnArgs := []any{"block_id", block.ID, "depth", depth + 1, "error", err}
 					if pageID := PageIDFromContext(ctx); pageID != "" {
 						warnArgs = append(warnArgs, "page_id", pageID)
 					}
@@ -79,7 +79,7 @@ func (c *Client) GetAllBlockChildren(ctx context.Context, blockID string) ([]Blo
 		cursor = *result.NextCursor
 	}
 
-	doneLogArgs := []any{"block_id", blockID, "count", len(allBlocks)}
+	doneLogArgs := []any{"block_id", blockID, "depth", depth, "count", len(allBlocks)}
 	if pageID := PageIDFromContext(ctx); pageID != "" {
 		doneLogArgs = append(doneLogArgs, "page_id", pageID)
 	}

@@ -399,29 +399,13 @@ func (c *Crawler) shouldSkipLegacyPage(ctx context.Context, pageID string, isIni
 		return legacyPageProcess // Page not in registry, should process
 	}
 
-	// Page exists - check if it needs updating
-	page, err := c.client.GetPage(ctx, pageID)
-	if err != nil {
-		// If this is a database, let processPage handle it
-		if strings.Contains(err.Error(), "is a database, not a page") {
-			c.logger.DebugContext(ctx, "detected database in legacy skip check, will process",
-				"page_id", pageID)
-			return legacyPageProcess
-		}
-		c.logger.WarnContext(ctx, "failed to fetch page for update check",
-			"page_id", pageID,
-			"error", err)
-		return legacyPageSkipAndRequeue
-	}
-
-	if !page.LastEditedTime.After(reg.LastEdited) {
-		c.logger.DebugContext(ctx, "skipping unchanged page",
-			"page_id", pageID,
-			"title", reg.Title)
-		return legacyPageSkip
-	}
-
-	return legacyPageProcess
+	// Page exists in registry - in init mode, skip it to avoid unnecessary API calls.
+	// Init mode is for discovering new pages, not updating existing ones.
+	// Use "update" queue type for forcing re-sync of existing pages.
+	c.logger.DebugContext(ctx, "skipping existing page in init mode (using cache)",
+		"page_id", pageID,
+		"title", reg.Title)
+	return legacyPageSkip
 }
 
 // parentResolutionResult holds the result of parent resolution.
@@ -467,7 +451,33 @@ func (c *Crawler) resolveAndFetchParent(
 		return result, nil
 	}
 
-	// Parent not found - recursively fetch it first for proper folder structure
+	// Parent not found in registry
+	// In init mode, queue the parent for later processing instead of fetching it now
+	// This improves performance by deferring parent content fetching
+	if isInit {
+		c.logger.InfoContext(ctx, "parent not in registry, queuing for later (init mode)",
+			itemType, itemID,
+			"parent_id", parentID)
+
+		// Queue parent page for processing
+		if _, queueErr := c.queueManager.CreateEntry(ctx, queue.Entry{
+			Type:     queueTypeInit,
+			Folder:   folder,
+			PageIDs:  []string{parentID},
+			ParentID: "", // Parent will determine its own parent
+		}); queueErr != nil {
+			c.logger.WarnContext(ctx, "failed to queue parent page",
+				"parent_id", parentID,
+				"error", queueErr)
+		}
+
+		// Treat child as root for now - will be reorganized when parent is processed
+		result.isRoot = true
+		result.parentID = ""
+		return result, nil
+	}
+
+	// In update mode, fetch parent immediately for correct path resolution
 	c.logger.InfoContext(ctx, "fetching parent page first",
 		itemType, itemID,
 		"parent_id", parentID)
@@ -512,18 +522,46 @@ func (c *Crawler) resolveAndFetchParent(
 			itemType, itemID,
 			"resolved_parent_id", resolvedID)
 		// Now try to fetch/process the resolved parent
-		if _, loadErr := c.loadPageRegistry(ctx, resolvedID); loadErr != nil {
-			resolvedParentFiles, fetchErr := c.processPage(ctx, resolvedID, folder, isInit, "")
-			if fetchErr != nil {
-				c.logger.ErrorContext(ctx, "failed to fetch resolved parent, treating as root",
-					itemType, itemID,
+		if _, loadErr := c.loadPageRegistry(ctx, resolvedID); loadErr == nil {
+			// Resolved parent is in registry, we're done
+			return result, nil
+		}
+
+		// Resolved parent not in registry
+		if isInit {
+			// In init mode, queue the resolved parent for later
+			c.logger.InfoContext(ctx, "resolved parent not in registry, queuing for later (init mode)",
+				itemType, itemID,
+				"resolved_parent_id", resolvedID)
+
+			if _, queueErr := c.queueManager.CreateEntry(ctx, queue.Entry{
+				Type:     queueTypeInit,
+				Folder:   folder,
+				PageIDs:  []string{resolvedID},
+				ParentID: "",
+			}); queueErr != nil {
+				c.logger.WarnContext(ctx, "failed to queue resolved parent",
 					"parent_id", resolvedID,
-					"error", fetchErr)
-				result.isRoot = true
-				result.parentID = ""
-			} else {
-				result.filesWritten = resolvedParentFiles
+					"error", queueErr)
 			}
+
+			// Treat child as root for now
+			result.isRoot = true
+			result.parentID = ""
+			return result, nil
+		}
+
+		// In update mode, fetch immediately
+		resolvedParentFiles, fetchErr := c.processPage(ctx, resolvedID, folder, isInit, "")
+		if fetchErr != nil {
+			c.logger.ErrorContext(ctx, "failed to fetch resolved parent, treating as root",
+				itemType, itemID,
+				"parent_id", resolvedID,
+				"error", fetchErr)
+			result.isRoot = true
+			result.parentID = ""
+		} else {
+			result.filesWritten = resolvedParentFiles
 		}
 	}
 
@@ -539,6 +577,7 @@ func (c *Crawler) resolveAndFetchParent(
 func (c *Crawler) processPage(
 	ctx context.Context, pageID, folder string, isInit bool, expectedParentID string,
 ) (int, error) {
+	startTime := time.Now()
 	c.logger.DebugContext(ctx, "processing page",
 		"page_id", pageID,
 		"folder", folder,
@@ -548,7 +587,9 @@ func (c *Crawler) processPage(
 	filesWritten := 0
 
 	// Try to fetch as page first
+	fetchPageStart := time.Now()
 	page, err := c.client.GetPage(ctx, pageID)
+	fetchPageDuration := time.Since(fetchPageStart)
 	if err != nil {
 		// Check if this is actually a database
 		if strings.Contains(err.Error(), "is a database, not a page") {
@@ -557,12 +598,19 @@ func (c *Crawler) processPage(
 		}
 		return 0, fmt.Errorf("fetch page: %w", err)
 	}
+	c.logger.DebugContext(ctx, "fetched page metadata", "page_id", pageID, "duration_ms", fetchPageDuration.Milliseconds())
 
 	// Fetch blocks
-	blocks, err := c.client.GetAllBlockChildren(ctx, pageID)
+	fetchBlocksStart := time.Now()
+	blocks, err := c.client.GetAllBlockChildren(ctx, pageID, 0)
+	fetchBlocksDuration := time.Since(fetchBlocksStart)
 	if err != nil {
 		return 0, fmt.Errorf("fetch blocks: %w", err)
 	}
+	c.logger.DebugContext(ctx, "fetched page blocks",
+		"page_id", pageID,
+		"block_count", len(blocks),
+		"duration_ms", fetchBlocksDuration.Milliseconds())
 
 	// Determine if this is a root page (check parent)
 	isRoot := false
@@ -613,6 +661,7 @@ func (c *Crawler) processPage(
 	now := time.Now()
 
 	// Convert to markdown
+	convertStart := time.Now()
 	content := c.converter.ConvertWithOptions(page, blocks, converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     page.Title(),
@@ -623,21 +672,30 @@ func (c *Crawler) processPage(
 		ParentID:      parentID,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
 	})
+	convertDuration := time.Since(convertStart)
 
 	// Compute content hash
 	hash := sha256.Sum256(content)
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write file
+	writeStart := time.Now()
 	if err := c.tx.Write(ctx, filePath, content); err != nil {
 		return 0, fmt.Errorf("write page: %w", err)
 	}
+	writeDuration := time.Since(writeStart)
 	filesWritten++ // Count this file write
 
+	totalDuration := time.Since(startTime)
 	c.logger.InfoContext(ctx, "downloaded page",
 		"page_id", pageID,
 		"title", page.Title(),
-		"path", filePath)
+		"path", filePath,
+		"total_ms", totalDuration.Milliseconds(),
+		"fetch_page_ms", fetchPageDuration.Milliseconds(),
+		"fetch_blocks_ms", fetchBlocksDuration.Milliseconds(),
+		"convert_ms", convertDuration.Milliseconds(),
+		"write_ms", writeDuration.Milliseconds())
 
 	// Discover child pages
 	children := c.findChildPages(blocks)
@@ -694,6 +752,7 @@ func (c *Crawler) processPage(
 func (c *Crawler) processDatabase(
 	ctx context.Context, databaseID, folder string, isInit bool, expectedParentID string,
 ) (int, error) {
+	startTime := time.Now()
 	c.logger.DebugContext(ctx, "processing database",
 		"database_id", databaseID,
 		"folder", folder,
@@ -703,16 +762,27 @@ func (c *Crawler) processDatabase(
 	filesWritten := 0
 
 	// Fetch database metadata
+	fetchDBStart := time.Now()
 	database, err := c.client.GetDatabase(ctx, databaseID)
+	fetchDBDuration := time.Since(fetchDBStart)
 	if err != nil {
 		return 0, fmt.Errorf("fetch database: %w", err)
 	}
+	c.logger.DebugContext(ctx, "fetched database metadata",
+		"database_id", databaseID,
+		"duration_ms", fetchDBDuration.Milliseconds())
 
 	// Query all pages in the database
+	queryDBStart := time.Now()
 	dbPages, err := c.client.QueryDatabase(ctx, databaseID)
+	queryDBDuration := time.Since(queryDBStart)
 	if err != nil {
 		return 0, fmt.Errorf("query database: %w", err)
 	}
+	c.logger.DebugContext(ctx, "queried database pages",
+		"database_id", databaseID,
+		"page_count", len(dbPages),
+		"duration_ms", queryDBDuration.Milliseconds())
 
 	// Determine if this is a root database (check parent)
 	isRoot := false
@@ -776,6 +846,7 @@ func (c *Crawler) processDatabase(
 	now := time.Now()
 
 	// Convert to markdown
+	convertStart := time.Now()
 	content := c.converter.ConvertDatabase(database, dbPages, converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     database.GetTitle(),
@@ -786,22 +857,31 @@ func (c *Crawler) processDatabase(
 		ParentID:      parentID,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, dbID),
 	})
+	convertDuration := time.Since(convertStart)
 
 	// Compute content hash
 	hash := sha256.Sum256(content)
 	contentHash := hex.EncodeToString(hash[:])
 
 	// Write file
+	writeStart := time.Now()
 	if err := c.tx.Write(ctx, filePath, content); err != nil {
 		return 0, fmt.Errorf("write database: %w", err)
 	}
+	writeDuration := time.Since(writeStart)
 	filesWritten++ // Count this file write
 
+	totalDuration := time.Since(startTime)
 	c.logger.InfoContext(ctx, "downloaded database",
 		"database_id", databaseID,
 		"title", database.GetTitle(),
 		"path", filePath,
-		"pages_count", len(dbPages))
+		"pages_count", len(dbPages),
+		"total_ms", totalDuration.Milliseconds(),
+		"fetch_db_ms", fetchDBDuration.Milliseconds(),
+		"query_db_ms", queryDBDuration.Milliseconds(),
+		"convert_ms", convertDuration.Milliseconds(),
+		"write_ms", writeDuration.Milliseconds())
 
 	// Collect child page IDs from database
 	var children []string
