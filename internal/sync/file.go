@@ -8,9 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,40 +30,9 @@ const (
 // ErrFileTooLarge is returned when a file exceeds the maximum size limit.
 var ErrFileTooLarge = errors.New("file exceeds maximum size limit")
 
-// getMaxFileSize returns the maximum file size from NTN_MAX_FILE_SIZE env var.
-// Supports formats: "5MB", "100KB", "1GB", or plain bytes "5242880".
-// Returns default of 5MB if not set or invalid.
+// getMaxFileSize returns the maximum file size for downloads.
 func getMaxFileSize() int64 {
-	val := os.Getenv("NTN_MAX_FILE_SIZE")
-	if val == "" || val == "0" {
-		return defaultMaxFileSize
-	}
-
-	// Try parsing as plain bytes
-	if bytes, err := strconv.ParseInt(val, 10, 64); err == nil {
-		return bytes
-	}
-
-	// Parse with unit suffix
-	val = strings.ToUpper(strings.TrimSpace(val))
-
-	units := map[string]int64{
-		"B":  1,
-		"KB": bytesPerKB,
-		"MB": bytesPerMB,
-		"GB": bytesPerGB,
-	}
-
-	for suffix, multiplier := range units {
-		if numStr, found := strings.CutSuffix(val, suffix); found {
-			if num, err := strconv.ParseFloat(strings.TrimSpace(numStr), 64); err == nil {
-				return int64(num * float64(multiplier))
-			}
-		}
-	}
-
-	// Invalid format, use default
-	return defaultMaxFileSize
+	return GetConfig().MaxFileSize
 }
 
 // formatBytes formats bytes in a human-readable format.

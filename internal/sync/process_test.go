@@ -12,6 +12,47 @@ import (
 	"github.com/fclairamb/ntnsync/internal/store"
 )
 
+func TestGetBlockDepthLimit(t *testing.T) {
+	// Cannot use t.Parallel() with t.Setenv
+	tests := []struct {
+		name     string
+		envValue string
+		unset    bool
+		expected int
+	}{
+		{name: "empty", envValue: "", unset: true, expected: 0},
+		{name: "zero", envValue: "0", expected: 0},
+		{name: "positive", envValue: "3", expected: 3},
+		{name: "large", envValue: "100", expected: 100},
+		{name: "negative", envValue: "-1", expected: 0},
+		{name: "invalid string", envValue: "abc", expected: 0},
+		{name: "float", envValue: "3.5", expected: 0},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset config to force reload with new env var
+			ResetConfig()
+
+			// t.Setenv handles save/restore automatically
+			if tc.unset {
+				// For "unset" case, we set to empty which getBlockDepthLimit treats as unset
+				t.Setenv("NTN_BLOCK_DEPTH", "")
+			} else {
+				t.Setenv("NTN_BLOCK_DEPTH", tc.envValue)
+			}
+
+			result := getBlockDepthLimit()
+			if result != tc.expected {
+				t.Errorf("getBlockDepthLimit() = %d, expected %d", result, tc.expected)
+			}
+		})
+	}
+
+	// Reset config after tests
+	ResetConfig()
+}
+
 // TestProcessQueue_MaxQueueFiles_DeletedFilesAreCounted verifies that fully processed
 // (deleted) queue files are counted toward the maxQueueFiles limit.
 // This was a bug where the counter was only incremented when files were updated,

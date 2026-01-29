@@ -35,6 +35,28 @@ NTN_LOG_FORMAT=json ./ntnsync sync -v
 {"time":"2026-01-24T10:30:46Z","level":"DEBUG","msg":"Processing page","page_id":"abc123"}
 ```
 
+## Performance Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NTN_BLOCK_DEPTH` | `0` | Maximum depth for block discovery (0 = unlimited) |
+| `NTN_QUEUE_DELAY` | `0` | Delay between processing queue files (e.g., `5s`, `1m`) |
+| `NTN_MAX_FILE_SIZE` | `5MB` | Maximum file size to download |
+
+**`NTN_BLOCK_DEPTH`**: Limits how deeply nested blocks are fetched.
+- `0` (default): Fetch all nested blocks (unlimited depth)
+- Positive integer: Stop exploring at that depth level
+- When limited, adds `simplified_depth: N` to page frontmatter
+
+**Examples**:
+```bash
+# Limit to 3 levels of nesting
+NTN_BLOCK_DEPTH=3 ./ntnsync sync
+
+# Fast sync with shallow block fetching
+NTN_BLOCK_DEPTH=2 ./ntnsync sync --max-pages 100
+```
+
 ## Commit/Push Environment Variables
 
 Git commit and push behavior is controlled via environment variables:

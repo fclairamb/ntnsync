@@ -86,7 +86,7 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 	now := time.Now()
 
 	// Convert database to markdown
-	content := c.converter.ConvertDatabase(database, dbPages, converter.ConvertOptions{
+	content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     database.GetTitle(),
 		FilePath:      filePath,
@@ -225,7 +225,7 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 	now := time.Now()
 
 	// Convert page to markdown
-	content := c.converter.ConvertWithOptions(page, blocks, converter.ConvertOptions{
+	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     page.Title(),
 		FilePath:      filePath,
@@ -558,7 +558,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 	now := time.Now()
 
 	// Convert page to markdown
-	content := c.converter.ConvertWithOptions(page, blocks, converter.ConvertOptions{
+	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     page.Title(),
 		FilePath:      filePath,
@@ -686,7 +686,7 @@ func (c *Crawler) saveDatabaseFromNotion(ctx context.Context, databaseID, folder
 	now := time.Now()
 
 	// Convert database to markdown
-	content := c.converter.ConvertDatabase(database, dbPages, converter.ConvertOptions{
+	content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     database.GetTitle(),
 		FilePath:      filePath,

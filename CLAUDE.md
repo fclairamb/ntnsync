@@ -27,6 +27,9 @@ NTN_COMMIT=true ./ntnsync sync                  # Process queue, commit
 **Logging environment variables**:
 - `NTN_LOG_FORMAT=text|json` - Log format (default: text, use json for CI/CD)
 
+**Performance environment variables**:
+- `NTN_BLOCK_DEPTH=N` - Limit block discovery depth (default: 0 = unlimited)
+
 **Key concepts**:
 - File paths never change when pages are renamed
 - Queue types: `init` (skip if exists) vs `update` (always process)

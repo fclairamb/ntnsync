@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -13,20 +12,15 @@ import (
 	"github.com/fclairamb/ntnsync/internal/queue"
 )
 
-// getQueueDelay returns the delay between processing queue files from NTN_QUEUE_DELAY env var.
-// Supports duration formats like "5m", "30s", "1h". Default is 0 (no delay).
+// getQueueDelay returns the delay between processing queue files.
 func getQueueDelay() time.Duration {
-	val := os.Getenv("NTN_QUEUE_DELAY")
-	if val == "" {
-		return 0
-	}
+	return GetConfig().QueueDelay
+}
 
-	delay, err := time.ParseDuration(val)
-	if err != nil {
-		return 0
-	}
-
-	return delay
+// getBlockDepthLimit returns the maximum depth for block discovery.
+// Returns 0 for unlimited depth (default).
+func getBlockDepthLimit() int {
+	return GetConfig().BlockDepth
 }
 
 // QueueCallback is called after each queue file is processed (written or deleted).
@@ -600,17 +594,24 @@ func (c *Crawler) processPage(
 	}
 	c.logger.DebugContext(ctx, "fetched page metadata", "page_id", pageID, "duration_ms", fetchPageDuration.Milliseconds())
 
-	// Fetch blocks
+	// Fetch blocks with optional depth limit
 	fetchBlocksStart := time.Now()
-	blocks, err := c.client.GetAllBlockChildren(ctx, pageID, 0)
+	maxDepth := getBlockDepthLimit()
+	blockResult, err := c.client.GetAllBlockChildrenWithLimit(ctx, pageID, maxDepth)
 	fetchBlocksDuration := time.Since(fetchBlocksStart)
 	if err != nil {
 		return 0, fmt.Errorf("fetch blocks: %w", err)
 	}
-	c.logger.DebugContext(ctx, "fetched page blocks",
+	blocks := blockResult.Blocks
+	logArgs := []any{
 		"page_id", pageID,
 		"block_count", len(blocks),
-		"duration_ms", fetchBlocksDuration.Milliseconds())
+		"duration_ms", fetchBlocksDuration.Milliseconds(),
+	}
+	if blockResult.WasLimited {
+		logArgs = append(logArgs, "simplified_depth", blockResult.MaxDepth)
+	}
+	c.logger.DebugContext(ctx, "fetched page blocks", logArgs...)
 
 	// Determine if this is a root page (check parent)
 	isRoot := false
@@ -660,17 +661,24 @@ func (c *Crawler) processPage(
 
 	now := time.Now()
 
+	// Only set SimplifiedDepth if limiting actually occurred
+	simplifiedDepth := 0
+	if blockResult.WasLimited {
+		simplifiedDepth = blockResult.MaxDepth
+	}
+
 	// Convert to markdown
 	convertStart := time.Now()
-	content := c.converter.ConvertWithOptions(page, blocks, converter.ConvertOptions{
-		Folder:        folder,
-		PageTitle:     page.Title(),
-		FilePath:      filePath,
-		LastSynced:    now,
-		NotionType:    "page",
-		IsRoot:        isRoot,
-		ParentID:      parentID,
-		FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
+	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
+		Folder:          folder,
+		PageTitle:       page.Title(),
+		FilePath:        filePath,
+		LastSynced:      now,
+		NotionType:      "page",
+		IsRoot:          isRoot,
+		ParentID:        parentID,
+		FileProcessor:   c.makeFileProcessor(ctx, filePath, pageID),
+		SimplifiedDepth: simplifiedDepth,
 	})
 	convertDuration := time.Since(convertStart)
 
@@ -687,7 +695,7 @@ func (c *Crawler) processPage(
 	filesWritten++ // Count this file write
 
 	totalDuration := time.Since(startTime)
-	c.logger.InfoContext(ctx, "downloaded page",
+	downloadLogArgs := []any{
 		"page_id", pageID,
 		"title", page.Title(),
 		"path", filePath,
@@ -695,7 +703,12 @@ func (c *Crawler) processPage(
 		"fetch_page_ms", fetchPageDuration.Milliseconds(),
 		"fetch_blocks_ms", fetchBlocksDuration.Milliseconds(),
 		"convert_ms", convertDuration.Milliseconds(),
-		"write_ms", writeDuration.Milliseconds())
+		"write_ms", writeDuration.Milliseconds(),
+	}
+	if simplifiedDepth > 0 {
+		downloadLogArgs = append(downloadLogArgs, "simplified_depth", simplifiedDepth)
+	}
+	c.logger.InfoContext(ctx, "downloaded page", downloadLogArgs...)
 
 	// Discover child pages
 	children := c.findChildPages(blocks)
@@ -847,7 +860,7 @@ func (c *Crawler) processDatabase(
 
 	// Convert to markdown
 	convertStart := time.Now()
-	content := c.converter.ConvertDatabase(database, dbPages, converter.ConvertOptions{
+	content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     database.GetTitle(),
 		FilePath:      filePath,
