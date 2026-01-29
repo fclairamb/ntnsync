@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -14,36 +12,15 @@ import (
 	"github.com/fclairamb/ntnsync/internal/queue"
 )
 
-// getQueueDelay returns the delay between processing queue files from NTN_QUEUE_DELAY env var.
-// Supports duration formats like "5m", "30s", "1h". Default is 0 (no delay).
+// getQueueDelay returns the delay between processing queue files.
 func getQueueDelay() time.Duration {
-	val := os.Getenv("NTN_QUEUE_DELAY")
-	if val == "" {
-		return 0
-	}
-
-	delay, err := time.ParseDuration(val)
-	if err != nil {
-		return 0
-	}
-
-	return delay
+	return GetConfig().QueueDelay
 }
 
-// getBlockDepthLimit returns the maximum depth for block discovery from NTN_BLOCK_DEPTH env var.
+// getBlockDepthLimit returns the maximum depth for block discovery.
 // Returns 0 for unlimited depth (default).
 func getBlockDepthLimit() int {
-	val := os.Getenv("NTN_BLOCK_DEPTH")
-	if val == "" || val == "0" {
-		return 0 // Unlimited
-	}
-
-	depth, err := strconv.Atoi(val)
-	if err != nil || depth < 0 {
-		return 0 // Invalid value, use unlimited
-	}
-
-	return depth
+	return GetConfig().BlockDepth
 }
 
 // QueueCallback is called after each queue file is processed (written or deleted).

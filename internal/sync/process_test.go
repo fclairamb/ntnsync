@@ -31,6 +31,9 @@ func TestGetBlockDepthLimit(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// Reset config to force reload with new env var
+			ResetConfig()
+
 			// t.Setenv handles save/restore automatically
 			if tc.unset {
 				// For "unset" case, we set to empty which getBlockDepthLimit treats as unset
@@ -45,6 +48,9 @@ func TestGetBlockDepthLimit(t *testing.T) {
 			}
 		})
 	}
+
+	// Reset config after tests
+	ResetConfig()
 }
 
 // TestProcessQueue_MaxQueueFiles_DeletedFilesAreCounted verifies that fully processed
