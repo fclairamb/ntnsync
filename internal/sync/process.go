@@ -579,6 +579,15 @@ func (c *Crawler) processPage(
 		"is_init", isInit,
 		"expected_parent_id", expectedParentID)
 
+	// Check if this page's root is enabled
+	enabled, rootID, err := c.isRootEnabled(ctx, pageID)
+	if err == nil && !enabled && rootID != "" {
+		c.logger.InfoContext(ctx, "skipping page with disabled root",
+			"page_id", pageID,
+			"root_id", rootID)
+		return 0, nil
+	}
+
 	filesWritten := 0
 
 	// Try to fetch as page first
@@ -773,6 +782,15 @@ func (c *Crawler) processDatabase(
 		"folder", folder,
 		"is_init", isInit,
 		"expected_parent_id", expectedParentID)
+
+	// Check if this database's root is enabled
+	enabled, rootID, err := c.isRootEnabled(ctx, databaseID)
+	if err == nil && !enabled && rootID != "" {
+		c.logger.InfoContext(ctx, "skipping database with disabled root",
+			"database_id", databaseID,
+			"root_id", rootID)
+		return 0, nil
+	}
 
 	filesWritten := 0
 

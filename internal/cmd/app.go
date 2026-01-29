@@ -139,13 +139,13 @@ func NewApp() *cli.Command {
 			return ctx, nil
 		},
 		Commands: []*cli.Command{
-			addCommand(),
 			getCommand(),
 			scanCommand(),
 			pullCommand(),
 			syncCommand(),
 			listCommand(),
 			statusCommand(),
+			cleanupCommand(),
 			reindexCommand(),
 			remoteCommand(),
 			serveCommand(),
@@ -153,91 +153,6 @@ func NewApp() *cli.Command {
 	}
 }
 
-// addCommand creates the add subcommand.
-func addCommand() *cli.Command {
-	return &cli.Command{
-		Name:      "add",
-		Usage:     "Add a root page to a folder and queue it for syncing",
-		ArgsUsage: "<page_id_or_url>",
-		Flags: []cli.Flag{
-			&cli.StringFlag{
-				Name:    "folder",
-				Aliases: []string{"f"},
-				Usage:   "Folder name (default: \"default\")",
-				Value:   "default",
-			},
-			&cli.BoolFlag{
-				Name:  "force-update",
-				Usage: "Force re-download even if page exists (creates 'update' queue entry)",
-			},
-			verboseFlag,
-		},
-		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
-			setupLogging(cmd)
-			return ctx, nil
-		},
-		Action: func(ctx context.Context, cmd *cli.Command) error {
-			// Get page ID or URL from args
-			if cmd.Args().Len() < 1 {
-				return apperrors.ErrPageIDRequired
-			}
-
-			pageInput := cmd.Args().Get(0)
-			folder := cmd.String("folder")
-			forceUpdate := cmd.Bool("force-update")
-
-			// Parse page ID from URL or raw ID
-			pageID, err := notion.ParsePageIDOrURL(pageInput)
-			if err != nil {
-				return fmt.Errorf("invalid page ID or URL: %w", err)
-			}
-
-			// Setup client and store
-			client, storeInst, err := setupClientAndStore(cmd)
-			if err != nil {
-				return err
-			}
-
-			// Get local store for commit/push operations
-			localStore, ok := storeInst.(*store.LocalStore)
-			if !ok {
-				return apperrors.ErrNotLocalStore
-			}
-
-			// Get remote config for commit/push settings
-			remoteConfig := localStore.RemoteConfig()
-
-			// Create crawler
-			crawler := sync.NewCrawler(client, storeInst, sync.WithCrawlerLogger(slog.Default()))
-
-			// Try to add as a page first
-			err = crawler.AddRootPage(ctx, pageID, folder, forceUpdate)
-			if err != nil {
-				// Check if this is a database (Notion returns a specific error)
-				if !strings.Contains(err.Error(), "is a database, not a page") {
-					return fmt.Errorf("add root page: %w", err)
-				}
-
-				// Handle as database
-				return handleAddDatabase(ctx, crawler, localStore, remoteConfig, pageID, folder, forceUpdate)
-			}
-
-			// Page added successfully
-			slog.Info("root page added successfully",
-				"page_id", pageID,
-				"folder", folder)
-
-			// Commit if enabled
-			if remoteConfig.IsCommitEnabled() {
-				if err := commitAndPush(ctx, crawler, localStore, remoteConfig, "add page"); err != nil {
-					return err
-				}
-			}
-
-			return nil
-		},
-	}
-}
 
 // getCommand creates the get subcommand.
 func getCommand() *cli.Command {
@@ -392,6 +307,11 @@ func pullCommand() *cli.Command {
 			// Create crawler
 			crawler := sync.NewCrawler(client, store, sync.WithCrawlerLogger(slog.Default()))
 
+			// Reconcile root.md
+			if err := crawler.ReconcileRootMd(ctx); err != nil {
+				return fmt.Errorf("reconcile root.md: %w", err)
+			}
+
 			// Execute pull
 			result, err := crawler.Pull(ctx, sync.PullOptions{
 				Folder:   folder,
@@ -488,6 +408,11 @@ func syncCommand() *cli.Command {
 			// Create crawler
 			crawler := sync.NewCrawler(client, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
+			// Reconcile root.md
+			if err := crawler.ReconcileRootMd(ctx); err != nil {
+				return fmt.Errorf("reconcile root.md: %w", err)
+			}
+
 			// Process queue with limits and periodic commit support
 			commitPeriod := remoteConfig.GetCommitPeriod()
 			if commitPeriod > 0 {
@@ -561,6 +486,11 @@ func listCommand() *cli.Command {
 			// Create crawler (no client needed for list)
 			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
 
+			// Reconcile root.md
+			if err := crawler.ReconcileRootMd(ctx); err != nil {
+				return fmt.Errorf("reconcile root.md: %w", err)
+			}
+
 			// Get page list
 			folders, err := crawler.ListPages(ctx, folder, tree)
 			if err != nil {
@@ -610,6 +540,11 @@ func statusCommand() *cli.Command {
 			// Create crawler (no client needed for status)
 			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
 
+			// Reconcile root.md
+			if err := crawler.ReconcileRootMd(ctx); err != nil {
+				return fmt.Errorf("reconcile root.md: %w", err)
+			}
+
 			// Get status
 			status, err := crawler.GetStatus(ctx, folder)
 			if err != nil {
@@ -658,6 +593,63 @@ func reindexCommand() *cli.Command {
 
 			if err := crawler.Reindex(ctx, dryRun); err != nil {
 				return fmt.Errorf("reindex: %w", err)
+			}
+
+			return nil
+		},
+	}
+}
+
+// cleanupCommand creates the cleanup subcommand.
+func cleanupCommand() *cli.Command {
+	return &cli.Command{
+		Name:  "cleanup",
+		Usage: "Delete orphaned pages not tracing to root.md",
+		Flags: []cli.Flag{
+			&cli.BoolFlag{
+				Name:  "dry-run",
+				Usage: "Preview only, don't delete anything",
+			},
+			verboseFlag,
+		},
+		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
+			setupLogging(cmd)
+			return ctx, nil
+		},
+		Action: func(ctx context.Context, cmd *cli.Command) error {
+			dryRun := cmd.Bool("dry-run")
+
+			// Setup store (no client needed for cleanup)
+			storePath := resolveStorePath(cmd)
+			remoteConfig := store.LoadRemoteConfigFromEnv()
+
+			localStore, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
+			if err != nil {
+				return fmt.Errorf("create store: %w", err)
+			}
+
+			// Create crawler (no client needed for cleanup)
+			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
+
+			// Reconcile root.md first
+			if err := crawler.ReconcileRootMd(ctx); err != nil {
+				return fmt.Errorf("reconcile root.md: %w", err)
+			}
+
+			// Run cleanup
+			result, err := crawler.Cleanup(ctx, dryRun)
+			if err != nil {
+				return fmt.Errorf("cleanup: %w", err)
+			}
+
+			// Display results
+			displayCleanupResults(result, dryRun)
+
+			// Commit if enabled and not dry-run
+			if !dryRun && remoteConfig.IsCommitEnabled() && result.DeletedFiles > 0 {
+				if err := commitAndPush(ctx, crawler, localStore, remoteConfig, "cleanup orphaned pages"); err != nil {
+					return err
+				}
 			}
 
 			return nil
@@ -792,6 +784,11 @@ func serveCommand() *cli.Command {
 			if token != "" && cfg.AutoSync {
 				client := notion.NewClient(token)
 				crawler := sync.NewCrawler(client, localStore, sync.WithCrawlerLogger(slog.Default()))
+
+				// Reconcile root.md at startup
+				if err := crawler.ReconcileRootMd(ctx); err != nil {
+					return fmt.Errorf("reconcile root.md: %w", err)
+				}
 
 				opts := []webhook.SyncWorkerOption{}
 				if cfg.SyncDelay > 0 {
@@ -963,7 +960,7 @@ func displayOverallStatus(status *sync.StatusInfo) {
 	fmt.Println()
 
 	if status.FolderCount == 0 {
-		fmt.Println("No folders found. Use 'add' command to add pages.")
+		fmt.Println("No folders found. Add entries to root.md to configure root pages.")
 		return
 	}
 
@@ -1024,6 +1021,21 @@ func displayQueueSummary(status *sync.StatusInfo) {
 	for _, queueEntry := range status.QueueEntries {
 		fmt.Printf("  - %s: %d pages (%s, %s)\n",
 			queueEntry.QueueFile, queueEntry.PageCount, queueEntry.Folder, queueEntry.Type)
+	}
+}
+
+// displayCleanupResults displays the results of a cleanup operation.
+//
+//nolint:forbidigo // CLI user output function
+func displayCleanupResults(result *sync.CleanupResult, dryRun bool) {
+	fmt.Printf("\nCleanup Results:\n")
+	fmt.Printf("  Orphaned pages found: %d\n", result.OrphanedPages)
+
+	if dryRun {
+		fmt.Printf("\nDry run - no changes were made\n")
+	} else {
+		fmt.Printf("  Registries deleted: %d\n", result.DeletedRegistries)
+		fmt.Printf("  Files deleted: %d\n", result.DeletedFiles)
 	}
 }
 
@@ -1122,7 +1134,7 @@ func displayScanComplete() {
 //
 //nolint:forbidigo // CLI user output function
 func displayNoFoldersMessage() {
-	fmt.Println("No folders found. Use 'add' command to add pages.")
+	fmt.Println("No folders found. Add entries to root.md to configure root pages.")
 }
 
 // displayPageList displays the list of pages in folders.
@@ -1180,33 +1192,6 @@ func (t *commitTracker) markCommitted() {
 	t.lastCommit = time.Now()
 }
 
-// handleAddDatabase handles adding a database when a page ID turns out to be a database.
-func handleAddDatabase(
-	ctx context.Context, crawler *sync.Crawler, localStore *store.LocalStore,
-	remoteConfig *store.RemoteConfig, pageID, folder string, forceUpdate bool,
-) error {
-	slog.InfoContext(ctx, "detected database, adding database pages",
-		"database_id", pageID,
-		"folder", folder)
-
-	// Try to add as a database
-	if err := crawler.AddDatabase(ctx, pageID, folder, forceUpdate); err != nil {
-		return fmt.Errorf("add database: %w", err)
-	}
-
-	slog.InfoContext(ctx, "database pages queued successfully",
-		"database_id", pageID,
-		"folder", folder)
-
-	// Commit if enabled
-	if remoteConfig.IsCommitEnabled() {
-		if err := commitAndPush(ctx, crawler, localStore, remoteConfig, "add database"); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
 
 // commitAndPush commits changes and optionally pushes to remote.
 func commitAndPush(

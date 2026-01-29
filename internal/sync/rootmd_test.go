@@ -1,0 +1,219 @@
+package sync
+
+import (
+	"testing"
+)
+
+func TestParseRootMdContent(t *testing.T) {
+	tests := []struct {
+		name     string
+		content  string
+		expected *RootManifest
+		wantErr  bool
+	}{
+		{
+			name: "valid table with entries",
+			content: `# Root Pages
+
+| folder | enabled | url |
+|--------|---------|-----|
+| tech | [x] | https://notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d |
+| product | [ ] | https://notion.so/Product-abc123def456789012345678901234ab |
+`,
+			expected: &RootManifest{
+				Entries: []RootEntry{
+					{
+						Folder:  "tech",
+						Enabled: true,
+						URL:     "https://notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d",
+						PageID:  "2c536f5e48f44234ad8d73a1a148e95d",
+					},
+					{
+						Folder:  "product",
+						Enabled: false,
+						URL:     "https://notion.so/Product-abc123def456789012345678901234ab",
+						PageID:  "abc123def456789012345678901234ab",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty table",
+			content: `# Root Pages
+
+| folder | enabled | url |
+|--------|---------|-----|
+`,
+			expected: &RootManifest{
+				Entries: nil,
+			},
+			wantErr: false,
+		},
+		{
+			name: "no table header",
+			content: `# Root Pages
+
+Some text without a table
+`,
+			expected: &RootManifest{
+				Entries: nil,
+			},
+			wantErr: false,
+		},
+		{
+			name: "uppercase checkbox",
+			content: `# Root Pages
+
+| folder | enabled | url |
+|--------|---------|-----|
+| docs | [X] | https://notion.so/Docs-aabbccdd11223344556677889900aabb |
+`,
+			expected: &RootManifest{
+				Entries: []RootEntry{
+					{
+						Folder:  "docs",
+						Enabled: true,
+						URL:     "https://notion.so/Docs-aabbccdd11223344556677889900aabb",
+						PageID:  "aabbccdd11223344556677889900aabb",
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseRootMdContent([]byte(tt.content))
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseRootMdContent() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+			if len(got.Entries) != len(tt.expected.Entries) {
+				t.Errorf("parseRootMdContent() got %d entries, want %d", len(got.Entries), len(tt.expected.Entries))
+				return
+			}
+			for i, entry := range got.Entries {
+				exp := tt.expected.Entries[i]
+				if entry.Folder != exp.Folder {
+					t.Errorf("entry[%d].Folder = %q, want %q", i, entry.Folder, exp.Folder)
+				}
+				if entry.Enabled != exp.Enabled {
+					t.Errorf("entry[%d].Enabled = %v, want %v", i, entry.Enabled, exp.Enabled)
+				}
+				if entry.URL != exp.URL {
+					t.Errorf("entry[%d].URL = %q, want %q", i, entry.URL, exp.URL)
+				}
+				if entry.PageID != exp.PageID {
+					t.Errorf("entry[%d].PageID = %q, want %q", i, entry.PageID, exp.PageID)
+				}
+			}
+		})
+	}
+}
+
+func TestFormatRootMd(t *testing.T) {
+	manifest := &RootManifest{
+		Entries: []RootEntry{
+			{
+				Folder:  "tech",
+				Enabled: true,
+				URL:     "https://notion.so/Wiki-abc123",
+			},
+			{
+				Folder:  "product",
+				Enabled: false,
+				URL:     "https://notion.so/Product-def456",
+			},
+		},
+	}
+
+	expected := `# Root Pages
+
+| folder | enabled | url |
+|--------|---------|-----|
+| tech | [x] | https://notion.so/Wiki-abc123 |
+| product | [ ] | https://notion.so/Product-def456 |
+`
+
+	got := formatRootMd(manifest)
+	if got != expected {
+		t.Errorf("formatRootMd() = %q, want %q", got, expected)
+	}
+}
+
+func TestParseRootMdRow(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		expected *RootEntry
+		wantErr  bool
+	}{
+		{
+			name:    "valid enabled row",
+			line:    "| docs | [x] | https://notion.so/Docs-aabbccdd11223344556677889900aabb |",
+			wantErr: false,
+			expected: &RootEntry{
+				Folder:  "docs",
+				Enabled: true,
+				URL:     "https://notion.so/Docs-aabbccdd11223344556677889900aabb",
+				PageID:  "aabbccdd11223344556677889900aabb",
+			},
+		},
+		{
+			name:    "valid disabled row",
+			line:    "| archive | [ ] | https://notion.so/Old-11223344556677889900112233445566 |",
+			wantErr: false,
+			expected: &RootEntry{
+				Folder:  "archive",
+				Enabled: false,
+				URL:     "https://notion.so/Old-11223344556677889900112233445566",
+				PageID:  "11223344556677889900112233445566",
+			},
+		},
+		{
+			name:    "invalid url",
+			line:    "| docs | [x] | not-a-valid-url |",
+			wantErr: true,
+		},
+		{
+			name:    "empty folder",
+			line:    "| | [x] | https://notion.so/Test-abc123 |",
+			wantErr: true,
+		},
+		{
+			name:    "not enough columns",
+			line:    "| docs | [x] |",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseRootMdRow(tt.line)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseRootMdRow() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
+				return
+			}
+			if got.Folder != tt.expected.Folder {
+				t.Errorf("Folder = %q, want %q", got.Folder, tt.expected.Folder)
+			}
+			if got.Enabled != tt.expected.Enabled {
+				t.Errorf("Enabled = %v, want %v", got.Enabled, tt.expected.Enabled)
+			}
+			if got.URL != tt.expected.URL {
+				t.Errorf("URL = %q, want %q", got.URL, tt.expected.URL)
+			}
+			if got.PageID != tt.expected.PageID {
+				t.Errorf("PageID = %q, want %q", got.PageID, tt.expected.PageID)
+			}
+		})
+	}
+}

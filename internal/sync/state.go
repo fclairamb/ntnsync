@@ -59,6 +59,7 @@ type PageRegistry struct {
 	LastEdited     time.Time `json:"last_edited"`
 	LastSynced     time.Time `json:"last_synced"`
 	IsRoot         bool      `json:"is_root"`
+	Enabled        bool      `json:"enabled,omitempty"` // Only meaningful for root pages
 	ParentID       string    `json:"parent_id,omitempty"`
 	Children       []string  `json:"children,omitempty"`
 	ContentHash    string    `json:"content_hash,omitempty"`
