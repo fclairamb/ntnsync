@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/ntnsync/internal/converter"
 	"github.com/fclairamb/ntnsync/internal/notion"
 	"github.com/fclairamb/ntnsync/internal/queue"
+	"github.com/fclairamb/ntnsync/internal/version"
 )
 
 // AddDatabase adds all pages from a database to a folder.
@@ -129,17 +130,18 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 
 	// Save database registry
 	if err := c.savePageRegistry(ctx, &PageRegistry{
-		ID:          dbID,
-		Type:        "database",
-		Folder:      folder,
-		FilePath:    filePath,
-		Title:       database.GetTitle(),
-		LastEdited:  database.LastEditedTime,
-		LastSynced:  now,
-		IsRoot:      true,
-		ParentID:    "",
-		Children:    pageIDs,
-		ContentHash: contentHash,
+		NtnsyncVersion: version.Version,
+		ID:             dbID,
+		Type:           "database",
+		Folder:         folder,
+		FilePath:       filePath,
+		Title:          database.GetTitle(),
+		LastEdited:     database.LastEditedTime,
+		LastSynced:     now,
+		IsRoot:         true,
+		ParentID:       "",
+		Children:       pageIDs,
+		ContentHash:    contentHash,
 	}); err != nil {
 		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
 	}
@@ -259,17 +261,18 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 
 	// Save page registry
 	if err := c.savePageRegistry(ctx, &PageRegistry{
-		ID:          pageID,
-		Type:        "page",
-		Folder:      folder,
-		FilePath:    filePath,
-		Title:       page.Title(),
-		LastEdited:  page.LastEditedTime,
-		LastSynced:  now,
-		IsRoot:      true,
-		ParentID:    "",
-		Children:    children,
-		ContentHash: contentHash,
+		NtnsyncVersion: version.Version,
+		ID:             pageID,
+		Type:           "page",
+		Folder:         folder,
+		FilePath:       filePath,
+		Title:          page.Title(),
+		LastEdited:     page.LastEditedTime,
+		LastSynced:     now,
+		IsRoot:         true,
+		ParentID:       "",
+		Children:       children,
+		ContentHash:    contentHash,
 	}); err != nil {
 		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
 	}
@@ -588,17 +591,18 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 
 	// Save page registry
 	if err := c.savePageRegistry(ctx, &PageRegistry{
-		ID:          pageID,
-		Type:        "page",
-		Folder:      folder,
-		FilePath:    filePath,
-		Title:       page.Title(),
-		LastEdited:  page.LastEditedTime,
-		LastSynced:  now,
-		IsRoot:      isRoot,
-		ParentID:    parentID,
-		Children:    children,
-		ContentHash: contentHash,
+		NtnsyncVersion: version.Version,
+		ID:             pageID,
+		Type:           "page",
+		Folder:         folder,
+		FilePath:       filePath,
+		Title:          page.Title(),
+		LastEdited:     page.LastEditedTime,
+		LastSynced:     now,
+		IsRoot:         isRoot,
+		ParentID:       parentID,
+		Children:       children,
+		ContentHash:    contentHash,
 	}); err != nil {
 		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
 	}
@@ -721,17 +725,18 @@ func (c *Crawler) saveDatabaseFromNotion(ctx context.Context, databaseID, folder
 
 	// Save page registry
 	if err := c.savePageRegistry(ctx, &PageRegistry{
-		ID:          dbID,
-		Type:        "database",
-		Folder:      folder,
-		FilePath:    filePath,
-		Title:       database.GetTitle(),
-		LastEdited:  database.LastEditedTime,
-		LastSynced:  now,
-		IsRoot:      isRoot,
-		ParentID:    parentID,
-		Children:    children,
-		ContentHash: contentHash,
+		NtnsyncVersion: version.Version,
+		ID:             dbID,
+		Type:           "database",
+		Folder:         folder,
+		FilePath:       filePath,
+		Title:          database.GetTitle(),
+		LastEdited:     database.LastEditedTime,
+		LastSynced:     now,
+		IsRoot:         isRoot,
+		ParentID:       parentID,
+		Children:       children,
+		ContentHash:    contentHash,
 	}); err != nil {
 		c.logger.WarnContext(ctx, "failed to save database registry", "error", err)
 	}

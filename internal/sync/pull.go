@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/ntnsync/internal/apperrors"
 	"github.com/fclairamb/ntnsync/internal/notion"
 	"github.com/fclairamb/ntnsync/internal/queue"
+	"github.com/fclairamb/ntnsync/internal/version"
 )
 
 // PullOptions configures the pull operation.
@@ -311,6 +312,9 @@ func (c *Crawler) loadState(ctx context.Context) error {
 
 // saveState saves the state to disk.
 func (c *Crawler) saveState(ctx context.Context) error {
+	// Always update version to current version when saving
+	c.state.NtnsyncVersion = version.Version
+
 	data, err := json.MarshalIndent(c.state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)

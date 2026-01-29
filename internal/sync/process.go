@@ -10,6 +10,7 @@ import (
 
 	"github.com/fclairamb/ntnsync/internal/converter"
 	"github.com/fclairamb/ntnsync/internal/queue"
+	"github.com/fclairamb/ntnsync/internal/version"
 )
 
 // getQueueDelay returns the delay between processing queue files.
@@ -715,17 +716,18 @@ func (c *Crawler) processPage(
 
 	// Save page registry
 	if err := c.savePageRegistry(ctx, &PageRegistry{
-		ID:          pageID,
-		Type:        "page",
-		Folder:      folder,
-		FilePath:    filePath,
-		Title:       page.Title(),
-		LastEdited:  page.LastEditedTime,
-		LastSynced:  now,
-		IsRoot:      isRoot,
-		ParentID:    parentID,
-		Children:    children,
-		ContentHash: contentHash,
+		NtnsyncVersion: version.Version,
+		ID:             pageID,
+		Type:           "page",
+		Folder:         folder,
+		FilePath:       filePath,
+		Title:          page.Title(),
+		LastEdited:     page.LastEditedTime,
+		LastSynced:     now,
+		IsRoot:         isRoot,
+		ParentID:       parentID,
+		Children:       children,
+		ContentHash:    contentHash,
 	}); err != nil {
 		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
 	}
@@ -905,17 +907,18 @@ func (c *Crawler) processDatabase(
 
 	// Save page registry (treat database as a page in registry)
 	if err := c.savePageRegistry(ctx, &PageRegistry{
-		ID:          dbID,
-		Type:        "database",
-		Folder:      folder,
-		FilePath:    filePath,
-		Title:       database.GetTitle(),
-		LastEdited:  database.LastEditedTime,
-		LastSynced:  now,
-		IsRoot:      isRoot,
-		ParentID:    parentID,
-		Children:    children,
-		ContentHash: contentHash,
+		NtnsyncVersion: version.Version,
+		ID:             dbID,
+		Type:           "database",
+		Folder:         folder,
+		FilePath:       filePath,
+		Title:          database.GetTitle(),
+		LastEdited:     database.LastEditedTime,
+		LastSynced:     now,
+		IsRoot:         isRoot,
+		ParentID:       parentID,
+		Children:       children,
+		ContentHash:    contentHash,
 	}); err != nil {
 		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
 	}

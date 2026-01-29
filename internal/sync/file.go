@@ -14,6 +14,7 @@ import (
 
 	"github.com/fclairamb/ntnsync/internal/apperrors"
 	"github.com/fclairamb/ntnsync/internal/converter"
+	"github.com/fclairamb/ntnsync/internal/version"
 )
 
 // Size constants.
@@ -277,10 +278,11 @@ func (c *Crawler) processFileURL(ctx context.Context, fileURL, pageFilePath, pag
 
 	// Save file registry
 	reg := &FileRegistry{
-		ID:         fileID,
-		FilePath:   localPath,
-		SourceURL:  fileURL,
-		LastSynced: time.Now(),
+		NtnsyncVersion: version.Version,
+		ID:             fileID,
+		FilePath:       localPath,
+		SourceURL:      fileURL,
+		LastSynced:     time.Now(),
 	}
 	if err := c.saveFileRegistry(ctx, reg); err != nil {
 		c.logger.WarnContext(ctx, "failed to save file registry", "error", err)
@@ -288,9 +290,10 @@ func (c *Crawler) processFileURL(ctx context.Context, fileURL, pageFilePath, pag
 
 	// Write manifest file
 	manifest := &FileManifest{
-		FileID:       fileID,
-		ParentPageID: pageID,
-		DownloadedAt: time.Now(),
+		NtnsyncVersion: version.Version,
+		FileID:         fileID,
+		ParentPageID:   pageID,
+		DownloadedAt:   time.Now(),
 	}
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err == nil {
