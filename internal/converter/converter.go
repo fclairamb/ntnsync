@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/ntnsync/internal/notion"
+	"github.com/fclairamb/ntnsync/internal/version"
 )
 
 const (
@@ -172,6 +173,7 @@ func (c *Converter) ConvertDatabase(
 func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions) string {
 	var builder strings.Builder
 	builder.WriteString("---\n")
+	builder.WriteString(fmt.Sprintf("ntnsync_version: %s\n", version.Version))
 	builder.WriteString(fmt.Sprintf("notion_id: %s\n", page.ID))
 
 	// Title (use page title, or opts.PageTitle for databases)
