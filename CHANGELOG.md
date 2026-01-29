@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0](https://github.com/fclairamb/ntnsync/compare/v0.4.0...v0.5.0) (2026-01-29)
+
+
+### Features
+
+* **sync:** add block discovery depth limit via NTN_BLOCK_DEPTH ([#24](https://github.com/fclairamb/ntnsync/issues/24)) ([fbfcd26](https://github.com/fclairamb/ntnsync/commit/fbfcd2675123da22f3f37db6c4c2292f1868bd2b))
+* **sync:** add extended page properties to frontmatter ([#26](https://github.com/fclairamb/ntnsync/issues/26)) ([5271b94](https://github.com/fclairamb/ntnsync/commit/5271b94d8d9aea6bb120edaedcf0a8d1a7c4d870))
+
 ## [0.4.0](https://github.com/fclairamb/ntnsync/compare/v0.3.1...v0.4.0) (2026-01-28)
 
 
