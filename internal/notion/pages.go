@@ -76,11 +76,11 @@ func (c *Client) GetDatabase(ctx context.Context, databaseID string) (*Database,
 	}
 
 	if len(container.DataSources) == 0 {
-		return nil, fmt.Errorf("database %s has no data sources", databaseID)
+		return nil, fmt.Errorf("database %s: %w", databaseID, apperrors.ErrNoDataSources)
 	}
 
 	// Get first data source for schema
-	ds, err := c.GetDataSource(ctx, container.DataSources[0].ID)
+	dataSource, err := c.GetDataSource(ctx, container.DataSources[0].ID)
 	if err != nil {
 		return nil, fmt.Errorf("get data source for database %s: %w", databaseID, err)
 	}
@@ -99,14 +99,14 @@ func (c *Client) GetDatabase(ctx context.Context, databaseID string) (*Database,
 		Description:    container.Description,
 		Icon:           container.Icon,
 		Cover:          container.Cover,
-		Properties:     ds.Properties,
+		Properties:     dataSource.Properties,
 		Parent:         container.Parent,
 		URL:            container.URL,
 		PublicURL:      container.PublicURL,
 		Archived:       container.Archived,
 		InTrash:        container.InTrash,
 		IsInline:       container.IsInline,
-		DataSourceID:   ds.ID,
+		DataSourceID:   dataSource.ID,
 		DataSources:    container.DataSources,
 	}, nil
 }
@@ -159,7 +159,7 @@ func (c *Client) QueryDatabase(ctx context.Context, databaseID string) ([]Databa
 	}
 
 	if len(container.DataSources) == 0 {
-		return nil, fmt.Errorf("database %s has no data sources", databaseID)
+		return nil, fmt.Errorf("database %s: %w", databaseID, apperrors.ErrNoDataSources)
 	}
 
 	// Query first data source

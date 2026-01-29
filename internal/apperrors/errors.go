@@ -86,4 +86,7 @@ var (
 
 	// ErrInvalidRootMdRow is returned when a row in root.md has invalid format.
 	ErrInvalidRootMdRow = errors.New("invalid row format")
+
+	// ErrNoDataSources is returned when a database has no data sources.
+	ErrNoDataSources = errors.New("database has no data sources")
 )
