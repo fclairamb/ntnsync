@@ -139,7 +139,7 @@ func TestConvertWithOptions_AllFields(t *testing.T) {
 		},
 	}
 	blocks := []notion.Block{}
-	opts := ConvertOptions{
+	opts := &ConvertOptions{
 		Folder:     "tech",
 		PageTitle:  "Test Page",
 		FilePath:   "tech/test-page.md",
@@ -233,7 +233,7 @@ func TestConvertDatabase_WithChildren(t *testing.T) {
 			},
 		},
 	}
-	opts := ConvertOptions{
+	opts := &ConvertOptions{
 		FilePath: "tech/my-database.md",
 	}
 
@@ -283,7 +283,7 @@ func TestConvertDatabase_NoChildren(t *testing.T) {
 		},
 	}
 	dbPages := []notion.DatabasePage{}
-	opts := ConvertOptions{
+	opts := &ConvertOptions{
 		FilePath: "tech/empty-database.md",
 	}
 
@@ -325,7 +325,7 @@ func TestConvertBlock_Paragraph(t *testing.T) {
 		},
 	}
 
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 
 	if !strings.Contains(result, "Test paragraph") {
 		t.Error("convertBlock() should include paragraph text")
@@ -385,7 +385,7 @@ func TestConvertBlock_Headings(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := c.convertBlock(&tt.block, 0, ConvertOptions{})
+			result := c.convertBlock(&tt.block, 0, &ConvertOptions{})
 			if !strings.Contains(result, tt.wantPrefix) {
 				t.Errorf("convertBlock() = %q, want to contain %q", result, tt.wantPrefix)
 			}
@@ -417,7 +417,7 @@ func TestConvertBlock_HeadingsToggleable(t *testing.T) {
 		},
 	}
 
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 
 	if !strings.Contains(result, "## Toggle Heading") {
 		t.Error("convertBlock() should include heading text")
@@ -497,7 +497,7 @@ func TestConvertBlock_Lists(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := c.convertBlock(&tt.block, 0, ConvertOptions{})
+			result := c.convertBlock(&tt.block, 0, &ConvertOptions{})
 			if !strings.Contains(result, tt.wantPrefix) {
 				t.Errorf("convertBlock() = %q, want to contain %q", result, tt.wantPrefix)
 			}
@@ -519,7 +519,7 @@ func TestConvertBlock_Code(t *testing.T) {
 		},
 	}
 
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 
 	if !strings.Contains(result, "```go") {
 		t.Error("convertBlock() should include language in code fence")
@@ -545,7 +545,7 @@ func TestConvertBlock_Quote(t *testing.T) {
 		},
 	}
 
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 
 	if !strings.Contains(result, "> This is a quote") {
 		t.Error("convertBlock() should format quote with > prefix")
@@ -569,7 +569,7 @@ func TestConvertBlock_Callout(t *testing.T) {
 		},
 	}
 
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 
 	if !strings.Contains(result, "💡") {
 		t.Error("convertBlock() should include callout emoji")
@@ -597,7 +597,7 @@ func TestConvertBlock_Image(t *testing.T) {
 	}
 
 	// Test without file processor
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 	if !strings.Contains(result, "![My Image](https://example.com/image.png)") {
 		t.Error("convertBlock() should format image with caption and URL")
 	}
@@ -609,7 +609,7 @@ func TestConvertBlock_Image(t *testing.T) {
 	fileProcessor := func(_ string) string {
 		return "./files/image.png"
 	}
-	opts := ConvertOptions{FileProcessor: fileProcessor}
+	opts := &ConvertOptions{FileProcessor: fileProcessor}
 	result = c.convertBlock(block, 0, opts)
 	if !strings.Contains(result, "![My Image](./files/image.png)") {
 		t.Error("convertBlock() should use file processor to transform URL")
@@ -627,7 +627,7 @@ func TestConvertBlock_ChildPage(t *testing.T) {
 			Title: "Child Page Title",
 		},
 	}
-	opts := ConvertOptions{
+	opts := &ConvertOptions{
 		PageTitle: "Parent Page",
 	}
 
@@ -676,7 +676,7 @@ func TestConvertBlock_Table(t *testing.T) {
 		},
 	}
 
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 
 	// Check table structure
 	if !strings.Contains(result, "| Header 1 | Header 2 |") {
@@ -698,7 +698,7 @@ func TestConvertBlock_Divider(t *testing.T) {
 		Type: "divider",
 	}
 
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 
 	if result != "---\n" {
 		t.Errorf("convertBlock() = %q, want %q", result, "---\n")
@@ -713,7 +713,7 @@ func TestConvertBlock_Unknown(t *testing.T) {
 		Type: "unknown_block_type",
 	}
 
-	result := c.convertBlock(block, 0, ConvertOptions{})
+	result := c.convertBlock(block, 0, &ConvertOptions{})
 
 	if result != "" {
 		t.Errorf("convertBlock() should return empty string for unknown block type, got %q", result)

@@ -28,14 +28,15 @@ type FileProcessor func(fileURL string) string
 
 // ConvertOptions contains additional metadata for conversion.
 type ConvertOptions struct {
-	Folder        string        // Folder name for this page
-	PageTitle     string        // Page title (used for child page link paths)
-	FilePath      string        // File path (stored in frontmatter)
-	LastSynced    time.Time     // When we synced this page
-	NotionType    string        // Type: "page" or "database"
-	IsRoot        bool          // Whether this is a root page
-	ParentID      string        // Resolved parent page/database ID (empty for root pages)
-	FileProcessor FileProcessor // Optional callback to process file URLs
+	Folder          string        // Folder name for this page
+	PageTitle       string        // Page title (used for child page link paths)
+	FilePath        string        // File path (stored in frontmatter)
+	LastSynced      time.Time     // When we synced this page
+	NotionType      string        // Type: "page" or "database"
+	IsRoot          bool          // Whether this is a root page
+	ParentID        string        // Resolved parent page/database ID (empty for root pages)
+	FileProcessor   FileProcessor // Optional callback to process file URLs
+	SimplifiedDepth int           // Depth limit used if page was depth-limited (0 if not limited)
 }
 
 // NewConverter creates a new converter with default settings.
@@ -47,11 +48,11 @@ func NewConverter() *Converter {
 
 // Convert converts a page and its blocks to Markdown.
 func (c *Converter) Convert(page *notion.Page, blocks []notion.Block) []byte {
-	return c.ConvertWithOptions(page, blocks, ConvertOptions{})
+	return c.ConvertWithOptions(page, blocks, &ConvertOptions{})
 }
 
 // ConvertWithOptions converts a page and its blocks to Markdown with additional options.
-func (c *Converter) ConvertWithOptions(page *notion.Page, blocks []notion.Block, opts ConvertOptions) []byte {
+func (c *Converter) ConvertWithOptions(page *notion.Page, blocks []notion.Block, opts *ConvertOptions) []byte {
 	var builder strings.Builder
 
 	if c.IncludeFrontmatter {
@@ -84,7 +85,7 @@ func (c *Converter) ConvertWithOptions(page *notion.Page, blocks []notion.Block,
 
 // ConvertDatabase converts a database to Markdown with a list of direct child pages.
 func (c *Converter) ConvertDatabase(
-	database *notion.Database, dbPages []notion.DatabasePage, opts ConvertOptions,
+	database *notion.Database, dbPages []notion.DatabasePage, opts *ConvertOptions,
 ) []byte {
 	var builder strings.Builder
 
@@ -156,7 +157,7 @@ func (c *Converter) ConvertDatabase(
 }
 
 // generateFrontmatter creates YAML frontmatter for the page.
-func (c *Converter) generateFrontmatter(page *notion.Page, opts ConvertOptions) string {
+func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions) string {
 	var builder strings.Builder
 	builder.WriteString("---\n")
 	builder.WriteString(fmt.Sprintf("notion_id: %s\n", page.ID))
@@ -201,6 +202,12 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts ConvertOptions) 
 
 	builder.WriteString(fmt.Sprintf("is_root: %t\n", opts.IsRoot))
 	builder.WriteString(fmt.Sprintf("notion_url: %s\n", page.URL))
+
+	// Include simplified_depth if page was depth-limited
+	if opts.SimplifiedDepth > 0 {
+		builder.WriteString(fmt.Sprintf("simplified_depth: %d\n", opts.SimplifiedDepth))
+	}
+
 	builder.WriteString("---\n\n")
 	return builder.String()
 }
@@ -208,7 +215,7 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts ConvertOptions) 
 // convertBlock converts a single block to Markdown.
 //
 //nolint:funlen,gocognit // Large switch statement for all Notion block types
-func (c *Converter) convertBlock(block *notion.Block, depth int, opts ConvertOptions) string {
+func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOptions) string {
 	indent := strings.Repeat("  ", depth)
 
 	switch block.Type {
@@ -503,7 +510,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts ConvertOpt
 }
 
 // convertChildren converts child blocks.
-func (c *Converter) convertChildren(children []notion.Block, depth int, opts ConvertOptions) string {
+func (c *Converter) convertChildren(children []notion.Block, depth int, opts *ConvertOptions) string {
 	var sb strings.Builder
 	for i := range children {
 		sb.WriteString(c.convertBlock(&children[i], depth, opts))
