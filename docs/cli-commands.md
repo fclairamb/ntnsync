@@ -89,34 +89,32 @@ NTN_COMMIT=true NTN_PUSH=false ./ntnsync sync
 NTN_COMMIT_PERIOD=1m ./ntnsync sync
 ```
 
-## Commands
+## Root Page Configuration
 
-### add
+Root pages are configured in `root.md` at the repository root. This file uses a markdown table format:
 
-Add a root page to a folder.
+```markdown
+# Root Pages
 
-```bash
-ntnsync add <page_id_or_url> [--folder FOLDER] [--force-update]
+| folder | enabled | url |
+|--------|---------|-----|
+| tech | [x] | https://notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d |
+| product | [x] | https://notion.so/Product-Specs-abc123def456 |
+| archive | [ ] | https://notion.so/Old-Docs-disabled123 |
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--folder`, `-f` | `default` | Target folder name |
-| `--force-update` | false | Force re-download even if exists |
+**Table columns**:
+- `folder`: Target folder name for the root page and its children
+- `enabled`: Checkbox (`[x]` enabled, `[ ]` disabled)
+- `url`: Notion page or database URL
 
 **Behavior**:
-- Downloads page to `$folder/$title.md`
-- Sets `is_root: true` in registry
-- Queues child pages for recursive sync
-- Accepts Notion URLs or raw page IDs
-- Auto-detects and handles databases
+- On every command (pull, sync, list, status), `root.md` is reconciled with registries
+- Disabled roots (`[ ]`) are skipped during pull and sync
+- Duplicate page IDs are automatically removed
+- File is created with template if it doesn't exist
 
-**Examples**:
-```bash
-ntnsync add https://www.notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d --folder tech
-ntnsync add 2c536f5e48f44234ad8d73a1a148e95d -f product
-ntnsync add https://www.notion.so/My-Database --force-update
-```
+## Commands
 
 ### get
 
@@ -266,6 +264,36 @@ ntnsync status [--folder FOLDER]
 - Queue statistics (pending pages by type and folder)
 - Queue file details
 
+### cleanup
+
+Delete orphaned pages not tracing to root.md.
+
+```bash
+ntnsync cleanup [--dry-run]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dry-run` | false | Preview only, don't delete anything |
+
+**Behavior**:
+- Reconciles root.md first
+- Lists all page registries
+- Traces each page to its root
+- Deletes pages whose root is not in root.md
+- Removes both markdown files and registry files
+
+**Use cases**:
+- Clean up after removing entries from root.md
+- Remove orphaned pages from reorganization
+- Prune pages from deleted root hierarchies
+
+**Examples**:
+```bash
+ntnsync cleanup --dry-run    # Preview what would be deleted
+ntnsync cleanup              # Delete orphaned pages
+```
+
 ### reindex
 
 Rebuild registry files from markdown files.
@@ -297,11 +325,20 @@ ntnsync reindex [--dry-run]
 ### First-time sync
 
 ```bash
-# 1. Add a root page
-ntnsync add https://www.notion.so/Wiki-2c536f5e... --folder tech
+# 1. Create root.md with your root pages
+cat > root.md << 'EOF'
+# Root Pages
 
-# 2. Sync the queue (with commit)
-NTN_COMMIT=true ntnsync sync --folder tech
+| folder | enabled | url |
+|--------|---------|-----|
+| tech | [x] | https://www.notion.so/Wiki-2c536f5e... |
+EOF
+
+# 2. Pull to queue all pages (use --since for first pull)
+ntnsync pull --since 30d
+
+# 3. Sync the queue (with commit)
+NTN_COMMIT=true ntnsync sync
 ```
 
 ### Incremental updates

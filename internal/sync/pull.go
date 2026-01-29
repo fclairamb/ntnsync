@@ -152,6 +152,18 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 			continue
 		}
 
+		// Check if page's root is enabled
+		if isTracked {
+			enabled, rootID, _ := c.isRootEnabled(ctx, pageID)
+			if !enabled {
+				c.logger.DebugContext(ctx, "skipping page with disabled root",
+					"page_id", pageID,
+					"root_id", rootID)
+				result.PagesSkipped++
+				continue
+			}
+		}
+
 		// Determine folder
 		var folder string
 		if isTracked {

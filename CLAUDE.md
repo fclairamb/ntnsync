@@ -10,13 +10,23 @@ See `docs/` for detailed documentation:
 
 ## Quick Reference
 
+**Root pages are configured in `root.md`**:
+```markdown
+# Root Pages
+
+| folder | enabled | url |
+|--------|---------|-----|
+| tech | [x] | https://notion.so/Wiki-abc123 |
+| product | [ ] | https://notion.so/Specs-def456 |
+```
+
 **Common commands**:
 ```bash
-./ntnsync add <page_id_or_url> --folder tech   # Add root page
 ./ntnsync pull --since 24h                      # Queue changed pages
 ./ntnsync sync                                  # Process queue
 NTN_COMMIT=true ./ntnsync sync                  # Process queue, commit
 ./ntnsync list --tree                           # Show page hierarchy
+./ntnsync cleanup --dry-run                     # Preview orphaned pages
 ```
 
 **Commit/Push environment variables**:
