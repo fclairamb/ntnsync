@@ -1,0 +1,195 @@
+package notion
+
+import "testing"
+
+func TestUserFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		user *User
+		want string
+	}{
+		{
+			name: "nil user",
+			user: nil,
+			want: "",
+		},
+		{
+			name: "person with email",
+			user: &User{
+				ID:   "abc12345-6789-abcd-efgh",
+				Type: "person",
+				Name: "John Doe",
+				Person: &Person{
+					Email: "john@example.com",
+				},
+			},
+			want: "John Doe <john@example.com> [abc12345]",
+		},
+		{
+			name: "person without email",
+			user: &User{
+				ID:   "def67890-1234-abcd-efgh",
+				Type: "person",
+				Name: "Jane Smith",
+			},
+			want: "Jane Smith [def67890]",
+		},
+		{
+			name: "person with nil person struct",
+			user: &User{
+				ID:     "ghi11111-2222-3333-4444",
+				Type:   "person",
+				Name:   "Bob Wilson",
+				Person: nil,
+			},
+			want: "Bob Wilson [ghi11111]",
+		},
+		{
+			name: "person with empty email",
+			user: &User{
+				ID:   "jkl55555-6666-7777-8888",
+				Type: "person",
+				Name: "Alice Brown",
+				Person: &Person{
+					Email: "",
+				},
+			},
+			want: "Alice Brown [jkl55555]",
+		},
+		{
+			name: "bot user",
+			user: &User{
+				ID:   "bot12345-6789-abcd-efgh",
+				Type: "bot",
+				Name: "Integration Bot",
+			},
+			want: "Integration Bot [bot12345]",
+		},
+		{
+			name: "user with no name",
+			user: &User{
+				ID: "12345678-abcd-efgh-ijkl",
+			},
+			want: "Unknown [12345678]",
+		},
+		{
+			name: "user with short ID",
+			user: &User{
+				ID:   "abc",
+				Name: "Short ID User",
+			},
+			want: "Short ID User [abc]",
+		},
+		{
+			name: "user with exactly 8 char ID",
+			user: &User{
+				ID:   "12345678",
+				Name: "Exact User",
+			},
+			want: "Exact User [12345678]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := tt.user.Format()
+			if got != tt.want {
+				t.Errorf("User.Format() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseRichTextToMarkdown_UserMention(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		richText []RichText
+		want     string
+	}{
+		{
+			name: "user mention with full info",
+			richText: []RichText{
+				{
+					Type:      "mention",
+					PlainText: "@John Doe",
+					Mention: &Mention{
+						Type: "user",
+						User: &User{
+							ID:   "abc12345-6789",
+							Type: "person",
+							Name: "John Doe",
+							Person: &Person{
+								Email: "john@example.com",
+							},
+						},
+					},
+				},
+			},
+			want: "@John Doe <john@example.com> [abc12345]",
+		},
+		{
+			name: "user mention without email",
+			richText: []RichText{
+				{
+					Type:      "mention",
+					PlainText: "@Jane",
+					Mention: &Mention{
+						Type: "user",
+						User: &User{
+							ID:   "def67890-1234",
+							Type: "person",
+							Name: "Jane Smith",
+						},
+					},
+				},
+			},
+			want: "@Jane Smith [def67890]",
+		},
+		{
+			name: "mixed text with user mention",
+			richText: []RichText{
+				{
+					Type:      "text",
+					PlainText: "Hello ",
+				},
+				{
+					Type:      "mention",
+					PlainText: "@John",
+					Mention: &Mention{
+						Type: "user",
+						User: &User{
+							ID:   "abc12345-6789",
+							Type: "person",
+							Name: "John Doe",
+							Person: &Person{
+								Email: "john@example.com",
+							},
+						},
+					},
+				},
+				{
+					Type:      "text",
+					PlainText: ", how are you?",
+				},
+			},
+			want: "Hello @John Doe <john@example.com> [abc12345], how are you?",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := ParseRichTextToMarkdown(tt.richText)
+			if got != tt.want {
+				t.Errorf("ParseRichTextToMarkdown() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
