@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+
+	"github.com/fclairamb/ntnsync/internal/apperrors"
 )
 
 // CleanupResult contains the result of a cleanup operation.
@@ -14,8 +16,6 @@ type CleanupResult struct {
 }
 
 // Cleanup deletes orphaned pages that don't trace back to a root in root.md.
-//
-//nolint:funlen // Cleanup logic with comprehensive error handling
 func (c *Crawler) Cleanup(ctx context.Context, dryRun bool) (*CleanupResult, error) {
 	c.logger.InfoContext(ctx, "starting cleanup", "dry_run", dryRun)
 
@@ -110,13 +110,16 @@ func (c *Crawler) traceToRoot(ctx context.Context, pageID string) (string, error
 
 	for {
 		if visited[currentID] {
-			return "", fmt.Errorf("cycle detected at page %s", currentID)
+			return "", fmt.Errorf("%w: at page %s", apperrors.ErrCycleDetected, currentID)
 		}
 		visited[currentID] = true
 
 		reg, err := c.loadPageRegistry(ctx, currentID)
-		if err != nil || reg == nil {
+		if err != nil {
 			// No registry - orphaned
+			return "", nil //nolint:nilerr // not finding registry is not an error, just means orphaned
+		}
+		if reg == nil {
 			return "", nil
 		}
 

@@ -4,15 +4,19 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/fclairamb/ntnsync/internal/apperrors"
 	"github.com/fclairamb/ntnsync/internal/notion"
 )
 
 const (
 	rootMdFile = "root.md"
+
+	// minTableColumns is the minimum number of columns in a root.md table row.
+	// Format: | folder | enabled | url | = 4 parts when split by |.
+	minTableColumns = 4
 )
 
 // RootEntry represents a row in root.md.
@@ -40,8 +44,8 @@ const rootMdTemplate = `# Root Pages
 func (c *Crawler) ParseRootMd(ctx context.Context) (*RootManifest, error) {
 	data, err := c.store.Read(ctx, rootMdFile)
 	if err != nil {
-		// File doesn't exist - return nil manifest
-		return nil, nil //nolint:nilnil // nil manifest indicates file doesn't exist
+		// File doesn't exist - return nil manifest (not an error condition)
+		return nil, nil //nolint:nilerr,nilnil // nil manifest indicates file doesn't exist
 	}
 
 	return parseRootMdContent(data)
@@ -70,7 +74,7 @@ func parseRootMdContent(data []byte) (*RootManifest, error) {
 	if scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if !strings.HasPrefix(line, "|") || !strings.Contains(line, "-") {
-			return nil, errors.New("expected table separator line after header")
+			return nil, apperrors.ErrInvalidRootMdTable
 		}
 	}
 
@@ -100,8 +104,8 @@ func parseRootMdContent(data []byte) (*RootManifest, error) {
 func parseRootMdRow(line string) (*RootEntry, error) {
 	// Split by | and trim
 	parts := strings.Split(line, "|")
-	if len(parts) < 4 {
-		return nil, errors.New("invalid row: not enough columns")
+	if len(parts) < minTableColumns {
+		return nil, fmt.Errorf("%w: not enough columns", apperrors.ErrInvalidRootMdRow)
 	}
 
 	// Parts[0] is empty (before first |), parts[1] is folder, parts[2] is enabled, parts[3] is url
@@ -110,7 +114,7 @@ func parseRootMdRow(line string) (*RootEntry, error) {
 	url := strings.TrimSpace(parts[3])
 
 	if folder == "" || url == "" {
-		return nil, errors.New("invalid row: empty folder or url")
+		return nil, fmt.Errorf("%w: empty folder or url", apperrors.ErrInvalidRootMdRow)
 	}
 
 	// Parse enabled checkbox
@@ -149,7 +153,8 @@ func formatRootMd(manifest *RootManifest) string {
 	buf.WriteString("| folder | enabled | url |\n")
 	buf.WriteString("|--------|---------|-----|\n")
 
-	for _, entry := range manifest.Entries {
+	for i := range manifest.Entries {
+		entry := &manifest.Entries[i]
 		enabled := "[ ]"
 		if entry.Enabled {
 			enabled = "[x]"
@@ -189,7 +194,8 @@ func (c *Crawler) ReconcileRootMd(ctx context.Context) error {
 	var cleaned []RootEntry
 	hasDuplicates := false
 
-	for _, entry := range manifest.Entries {
+	for i := range manifest.Entries {
+		entry := &manifest.Entries[i]
 		if seenIDs[entry.PageID] {
 			c.logger.WarnContext(ctx, "duplicate page ID in root.md, skipping",
 				"page_id", entry.PageID,
@@ -199,7 +205,7 @@ func (c *Crawler) ReconcileRootMd(ctx context.Context) error {
 			continue
 		}
 		seenIDs[entry.PageID] = true
-		cleaned = append(cleaned, entry)
+		cleaned = append(cleaned, *entry)
 
 		// Load or create registry
 		reg, _ := c.loadPageRegistry(ctx, entry.PageID)
@@ -249,13 +255,16 @@ func (c *Crawler) isRootEnabled(ctx context.Context, pageID string) (bool, strin
 
 	for {
 		if visited[currentID] {
-			return false, "", errors.New("cycle detected in page hierarchy")
+			return false, "", apperrors.ErrCycleDetected
 		}
 		visited[currentID] = true
 
 		reg, err := c.loadPageRegistry(ctx, currentID)
-		if err != nil || reg == nil {
-			// Orphaned page - no registry found
+		if err != nil {
+			// Registry not found - orphaned page
+			return false, "", nil //nolint:nilerr // not finding registry is not an error, just means orphaned
+		}
+		if reg == nil {
 			return false, "", nil
 		}
 
@@ -283,8 +292,8 @@ func (c *Crawler) GetRootPageIDs(ctx context.Context) (map[string]bool, error) {
 		return rootIDs, nil
 	}
 
-	for _, entry := range manifest.Entries {
-		rootIDs[entry.PageID] = true
+	for i := range manifest.Entries {
+		rootIDs[manifest.Entries[i].PageID] = true
 	}
 
 	return rootIDs, nil

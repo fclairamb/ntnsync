@@ -153,7 +153,6 @@ func NewApp() *cli.Command {
 	}
 }
 
-
 // getCommand creates the get subcommand.
 func getCommand() *cli.Command {
 	return &cli.Command{
@@ -308,8 +307,8 @@ func pullCommand() *cli.Command {
 			crawler := sync.NewCrawler(client, store, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md
-			if err := crawler.ReconcileRootMd(ctx); err != nil {
-				return fmt.Errorf("reconcile root.md: %w", err)
+			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
+				return fmt.Errorf("reconcile root.md: %w", reconcileErr)
 			}
 
 			// Execute pull
@@ -409,8 +408,8 @@ func syncCommand() *cli.Command {
 			crawler := sync.NewCrawler(client, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md
-			if err := crawler.ReconcileRootMd(ctx); err != nil {
-				return fmt.Errorf("reconcile root.md: %w", err)
+			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
+				return fmt.Errorf("reconcile root.md: %w", reconcileErr)
 			}
 
 			// Process queue with limits and periodic commit support
@@ -487,8 +486,8 @@ func listCommand() *cli.Command {
 			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md
-			if err := crawler.ReconcileRootMd(ctx); err != nil {
-				return fmt.Errorf("reconcile root.md: %w", err)
+			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
+				return fmt.Errorf("reconcile root.md: %w", reconcileErr)
 			}
 
 			// Get page list
@@ -541,8 +540,8 @@ func statusCommand() *cli.Command {
 			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md
-			if err := crawler.ReconcileRootMd(ctx); err != nil {
-				return fmt.Errorf("reconcile root.md: %w", err)
+			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
+				return fmt.Errorf("reconcile root.md: %w", reconcileErr)
 			}
 
 			// Get status
@@ -632,8 +631,8 @@ func cleanupCommand() *cli.Command {
 			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md first
-			if err := crawler.ReconcileRootMd(ctx); err != nil {
-				return fmt.Errorf("reconcile root.md: %w", err)
+			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
+				return fmt.Errorf("reconcile root.md: %w", reconcileErr)
 			}
 
 			// Run cleanup
@@ -786,8 +785,8 @@ func serveCommand() *cli.Command {
 				crawler := sync.NewCrawler(client, localStore, sync.WithCrawlerLogger(slog.Default()))
 
 				// Reconcile root.md at startup
-				if err := crawler.ReconcileRootMd(ctx); err != nil {
-					return fmt.Errorf("reconcile root.md: %w", err)
+				if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
+					return fmt.Errorf("reconcile root.md: %w", reconcileErr)
 				}
 
 				opts := []webhook.SyncWorkerOption{}
@@ -1191,7 +1190,6 @@ func (t *commitTracker) shouldCommit() bool {
 func (t *commitTracker) markCommitted() {
 	t.lastCommit = time.Now()
 }
-
 
 // commitAndPush commits changes and optionally pushes to remote.
 func commitAndPush(

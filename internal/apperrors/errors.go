@@ -77,4 +77,13 @@ var (
 
 	// ErrTransactionCommitted is returned when attempting to use a transaction that has already been committed.
 	ErrTransactionCommitted = errors.New("transaction already committed")
+
+	// ErrCycleDetected is returned when a cycle is detected in page hierarchy.
+	ErrCycleDetected = errors.New("cycle detected in page hierarchy")
+
+	// ErrInvalidRootMdTable is returned when root.md has invalid table format.
+	ErrInvalidRootMdTable = errors.New("expected table separator line after header")
+
+	// ErrInvalidRootMdRow is returned when a row in root.md has invalid format.
+	ErrInvalidRootMdRow = errors.New("invalid row format")
 )

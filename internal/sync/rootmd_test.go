@@ -5,6 +5,8 @@ import (
 )
 
 func TestParseRootMdContent(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		content  string
@@ -85,6 +87,8 @@ Some text without a table
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := parseRootMdContent([]byte(tt.content))
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseRootMdContent() error = %v, wantErr %v", err, tt.wantErr)
@@ -117,6 +121,8 @@ Some text without a table
 }
 
 func TestFormatRootMd(t *testing.T) {
+	t.Parallel()
+
 	manifest := &RootManifest{
 		Entries: []RootEntry{
 			{
@@ -147,6 +153,8 @@ func TestFormatRootMd(t *testing.T) {
 }
 
 func TestParseRootMdRow(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		name     string
 		line     string
@@ -194,6 +202,8 @@ func TestParseRootMdRow(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			got, err := parseRootMdRow(tt.line)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseRootMdRow() error = %v, wantErr %v", err, tt.wantErr)
