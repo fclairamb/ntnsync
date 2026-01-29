@@ -18,6 +18,8 @@ type Page struct {
 	Parent         Parent     `json:"parent"`
 	Archived       bool       `json:"archived"`
 	InTrash        bool       `json:"in_trash"`
+	Icon           *Icon      `json:"icon"`
+	Cover          *FileBlock `json:"cover"`
 	Properties     Properties `json:"properties"`
 	URL            string     `json:"url"`
 	PublicURL      *string    `json:"public_url"`
@@ -70,6 +72,8 @@ type DatabasePage struct {
 	Parent         Parent                     `json:"parent"`
 	Archived       bool                       `json:"archived"`
 	InTrash        bool                       `json:"in_trash"`
+	Icon           *Icon                      `json:"icon"`
+	Cover          *FileBlock                 `json:"cover"`
 	Properties     map[string]json.RawMessage `json:"properties"`
 	URL            string                     `json:"url"`
 	PublicURL      *string                    `json:"public_url"`
@@ -105,6 +109,8 @@ func (p *DatabasePage) ToPage() *Page {
 		Parent:         p.Parent,
 		Archived:       p.Archived,
 		InTrash:        p.InTrash,
+		Icon:           p.Icon,
+		Cover:          p.Cover,
 		Properties:     Properties{}, // Empty - we extract title separately
 		URL:            p.URL,
 		PublicURL:      p.PublicURL,

@@ -4,6 +4,7 @@ package converter
 import (
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,10 @@ import (
 const (
 	blockTypeFile      = "file"
 	defaultUntitledStr = "untitled"
+
+	// Property type constants.
+	propTypeNumber = "number"
+	propTypeDate   = "date"
 )
 
 // Converter converts Notion pages and blocks to Markdown.
@@ -93,8 +98,13 @@ func (c *Converter) ConvertDatabase(
 		// Create a pseudo-page for frontmatter generation
 		page := &notion.Page{
 			ID:             database.ID,
+			CreatedTime:    database.CreatedTime,
 			LastEditedTime: database.LastEditedTime,
+			CreatedBy:      database.CreatedBy,
+			LastEditedBy:   database.LastEditedBy,
 			Parent:         database.Parent,
+			Icon:           database.Icon,
+			Cover:          database.Cover,
 			URL:            database.URL,
 		}
 		builder.WriteString(c.generateFrontmatter(page, opts))
@@ -157,6 +167,8 @@ func (c *Converter) ConvertDatabase(
 }
 
 // generateFrontmatter creates YAML frontmatter for the page.
+//
+//nolint:funlen // Many fields to generate
 func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions) string {
 	var builder strings.Builder
 	builder.WriteString("---\n")
@@ -188,11 +200,24 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 		builder.WriteString(fmt.Sprintf("file_path: %s\n", opts.FilePath))
 	}
 
+	// Creator and editor information
+	if page.CreatedBy.ID != "" {
+		builder.WriteString(fmt.Sprintf("created_by: %q\n", page.CreatedBy.ID))
+	}
+	if page.LastEditedBy.ID != "" {
+		builder.WriteString(fmt.Sprintf("last_edited_by: %q\n", page.LastEditedBy.ID))
+	}
+
 	builder.WriteString(fmt.Sprintf("last_edited: %s\n", page.LastEditedTime.Format(time.RFC3339)))
 
 	// Last synced time
 	if !opts.LastSynced.IsZero() {
 		builder.WriteString(fmt.Sprintf("last_synced: %s\n", opts.LastSynced.Format(time.RFC3339)))
+	}
+
+	// Icon
+	if iconStr := formatIcon(page.Icon); iconStr != "" {
+		builder.WriteString(fmt.Sprintf("icon: %q\n", iconStr))
 	}
 
 	// Include resolved parent ID (page or database, never block)
@@ -206,6 +231,27 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 	// Include simplified_depth if page was depth-limited
 	if opts.SimplifiedDepth > 0 {
 		builder.WriteString(fmt.Sprintf("simplified_depth: %d\n", opts.SimplifiedDepth))
+	}
+
+	// Include properties for database pages (pages whose parent is a database)
+	if page.Parent.DatabaseID != "" && len(page.Properties) > 0 {
+		propsBuilder := strings.Builder{}
+		for name := range page.Properties {
+			prop := page.Properties[name]
+			value := extractPropertyValue(&prop)
+			if value == nil {
+				continue
+			}
+			formatted := formatPropertyValue(value)
+			if formatted == "" {
+				continue
+			}
+			propsBuilder.WriteString(fmt.Sprintf("  %s: %s\n", name, formatted))
+		}
+		if propsBuilder.Len() > 0 {
+			builder.WriteString("properties:\n")
+			builder.WriteString(propsBuilder.String())
+		}
 	}
 
 	builder.WriteString("---\n\n")
@@ -576,4 +622,184 @@ func (c *Converter) isListItem(block *notion.Block) bool {
 	return block.Type == "bulleted_list_item" ||
 		block.Type == "numbered_list_item" ||
 		block.Type == "to_do"
+}
+
+// formatIcon formats an icon for frontmatter output.
+// Returns empty string if icon is nil.
+func formatIcon(icon *notion.Icon) string {
+	if icon == nil {
+		return ""
+	}
+	switch icon.Type {
+	case "emoji":
+		return "emoji:" + icon.Emoji
+	case "external":
+		if icon.External != nil {
+			return "external:" + icon.External.URL
+		}
+	case "file":
+		if icon.File != nil {
+			return "file:" + icon.File.URL
+		}
+	}
+	return ""
+}
+
+// extractPropertyValue extracts the display value from a Property.
+// Returns nil if the property has no value or is a title property (titles are handled separately).
+//
+//nolint:gocognit,funlen // Handles many property types
+func extractPropertyValue(prop *notion.Property) any {
+	if prop == nil {
+		return nil
+	}
+
+	switch prop.Type {
+	case "title":
+		// Skip title - it's handled separately in frontmatter
+		return nil
+	case "rich_text":
+		if len(prop.RichText) > 0 {
+			return notion.ParseRichText(prop.RichText)
+		}
+	case propTypeNumber:
+		if prop.Number != nil {
+			return *prop.Number
+		}
+	case "select":
+		if prop.Select != nil {
+			return prop.Select.Name
+		}
+	case "multi_select":
+		if len(prop.MultiSelect) > 0 {
+			names := make([]string, len(prop.MultiSelect))
+			for i := range prop.MultiSelect {
+				names[i] = prop.MultiSelect[i].Name
+			}
+			return names
+		}
+	case "status":
+		if prop.Status != nil {
+			return prop.Status.Name
+		}
+	case propTypeDate:
+		if prop.Date != nil {
+			return prop.Date.Start
+		}
+	case "checkbox":
+		return prop.Checkbox
+	case "url":
+		if prop.URL != nil {
+			return *prop.URL
+		}
+	case "email":
+		if prop.Email != nil {
+			return *prop.Email
+		}
+	case "phone_number":
+		if prop.PhoneNumber != nil {
+			return *prop.PhoneNumber
+		}
+	case "people":
+		if len(prop.People) > 0 {
+			ids := make([]string, len(prop.People))
+			for i := range prop.People {
+				ids[i] = prop.People[i].ID
+			}
+			return ids
+		}
+	case "relation":
+		if len(prop.Relation) > 0 {
+			ids := make([]string, len(prop.Relation))
+			for i := range prop.Relation {
+				ids[i] = prop.Relation[i].ID
+			}
+			return ids
+		}
+	case "formula":
+		if prop.Formula != nil {
+			switch prop.Formula.Type {
+			case "string":
+				if prop.Formula.String != nil {
+					return *prop.Formula.String
+				}
+			case propTypeNumber:
+				if prop.Formula.Number != nil {
+					return *prop.Formula.Number
+				}
+			case "boolean":
+				if prop.Formula.Boolean != nil {
+					return *prop.Formula.Boolean
+				}
+			case propTypeDate:
+				if prop.Formula.Date != nil {
+					return prop.Formula.Date.Start
+				}
+			}
+		}
+	case "rollup":
+		if prop.Rollup != nil {
+			switch prop.Rollup.Type {
+			case propTypeNumber:
+				if prop.Rollup.Number != nil {
+					return *prop.Rollup.Number
+				}
+			case propTypeDate:
+				if prop.Rollup.Date != nil {
+					return prop.Rollup.Date.Start
+				}
+			}
+		}
+	case "created_by":
+		if prop.CreatedBy != nil {
+			return prop.CreatedBy.ID
+		}
+	case "last_edited_by":
+		if prop.LastEditedBy != nil {
+			return prop.LastEditedBy.ID
+		}
+	case "created_time":
+		if prop.CreatedTime != nil {
+			return *prop.CreatedTime
+		}
+	case "last_edited_time":
+		if prop.LastEditedTime != nil {
+			return *prop.LastEditedTime
+		}
+	case "unique_id":
+		if prop.UniqueID != nil {
+			if prop.UniqueID.Prefix != nil {
+				return fmt.Sprintf("%s-%d", *prop.UniqueID.Prefix, prop.UniqueID.Number)
+			}
+			return prop.UniqueID.Number
+		}
+	}
+
+	return nil
+}
+
+// formatPropertyValue formats a property value for YAML frontmatter.
+func formatPropertyValue(value any) string {
+	switch typedVal := value.(type) {
+	case string:
+		return fmt.Sprintf("%q", typedVal)
+	case float64:
+		return strconv.FormatFloat(typedVal, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(typedVal)
+	case bool:
+		return strconv.FormatBool(typedVal)
+	case []string:
+		if len(typedVal) == 0 {
+			return ""
+		}
+		var builder strings.Builder
+		builder.WriteString("\n")
+		for _, s := range typedVal {
+			builder.WriteString(fmt.Sprintf("    - %q\n", s))
+		}
+		return strings.TrimSuffix(builder.String(), "\n")
+	default:
+		return fmt.Sprintf("%v", typedVal)
+	}
 }
