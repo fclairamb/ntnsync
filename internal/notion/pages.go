@@ -37,24 +37,83 @@ func (c *Client) GetPage(ctx context.Context, pageID string) (*Page, error) {
 	return &page, nil
 }
 
+// GetDatabaseContainer retrieves database container info with data sources list (API 2025-09-03+).
+func (c *Client) GetDatabaseContainer(ctx context.Context, databaseID string) (*DatabaseContainer, error) {
+	c.logger.DebugContext(ctx, "Fetching database container", slog.String("databaseId", databaseID))
+
+	var container DatabaseContainer
+	path := "/databases/" + databaseID
+	if err := c.do(ctx, "GET", path, nil, &container); err != nil {
+		return nil, fmt.Errorf("get database container %s: %w", databaseID, err)
+	}
+	return &container, nil
+}
+
+// GetDataSource retrieves a data source by ID (schema and properties).
+func (c *Client) GetDataSource(ctx context.Context, dataSourceID string) (*DataSource, error) {
+	c.logger.DebugContext(ctx, "Fetching data source", slog.String("dataSourceId", dataSourceID))
+
+	var ds DataSource
+	path := "/data_sources/" + dataSourceID
+	if err := c.do(ctx, "GET", path, nil, &ds); err != nil {
+		return nil, fmt.Errorf("get data source %s: %w", dataSourceID, err)
+	}
+	return &ds, nil
+}
+
 // GetDatabase retrieves a database by ID.
+// In API 2025-09-03+, this fetches the container and first data source to build
+// a backwards-compatible Database struct.
 func (c *Client) GetDatabase(ctx context.Context, databaseID string) (*Database, error) {
 	c.logger.DebugContext(ctx, "Fetching database", slog.String("databaseId", databaseID))
 
 	before := time.Now()
 
-	var database Database
-	path := "/databases/" + databaseID
-	if err := c.do(ctx, "GET", path, nil, &database); err != nil {
-		return nil, fmt.Errorf("get database %s: %w", databaseID, err)
+	// Get container (returns list of data sources)
+	container, err := c.GetDatabaseContainer(ctx, databaseID)
+	if err != nil {
+		return nil, err
 	}
+
+	if len(container.DataSources) == 0 {
+		return nil, fmt.Errorf("database %s: %w", databaseID, apperrors.ErrNoDataSources)
+	}
+
+	// Get first data source for schema
+	dataSource, err := c.GetDataSource(ctx, container.DataSources[0].ID)
+	if err != nil {
+		return nil, fmt.Errorf("get data source for database %s: %w", databaseID, err)
+	}
+
 	c.logger.DebugContext(ctx, "Database fetched", slog.Duration("timeSpent", time.Since(before)))
-	return &database, nil
+
+	// Return backwards-compatible Database struct
+	return &Database{
+		Object:         container.Object,
+		ID:             container.ID,
+		CreatedTime:    container.CreatedTime,
+		LastEditedTime: container.LastEditedTime,
+		CreatedBy:      container.CreatedBy,
+		LastEditedBy:   container.LastEditedBy,
+		Title:          container.Title,
+		Description:    container.Description,
+		Icon:           container.Icon,
+		Cover:          container.Cover,
+		Properties:     dataSource.Properties,
+		Parent:         container.Parent,
+		URL:            container.URL,
+		PublicURL:      container.PublicURL,
+		Archived:       container.Archived,
+		InTrash:        container.InTrash,
+		IsInline:       container.IsInline,
+		DataSourceID:   dataSource.ID,
+		DataSources:    container.DataSources,
+	}, nil
 }
 
-// QueryDatabase queries a database and returns all pages.
-func (c *Client) QueryDatabase(ctx context.Context, databaseID string) ([]DatabasePage, error) {
-	c.logger.DebugContext(ctx, "Querying database", slog.String("databaseId", databaseID))
+// QueryDataSource queries a data source and returns all pages (API 2025-09-03+).
+func (c *Client) QueryDataSource(ctx context.Context, dataSourceID string) ([]DatabasePage, error) {
+	c.logger.DebugContext(ctx, "Querying data source", slog.String("dataSourceId", dataSourceID))
 
 	var allPages []DatabasePage
 	var cursor string
@@ -68,9 +127,9 @@ func (c *Client) QueryDatabase(ctx context.Context, databaseID string) ([]Databa
 		}
 
 		var result QueryDatabaseResponse
-		path := fmt.Sprintf("/databases/%s/query", databaseID)
+		path := fmt.Sprintf("/data_sources/%s/query", dataSourceID)
 		if err := c.do(ctx, "POST", path, body, &result); err != nil {
-			return nil, fmt.Errorf("query database %s: %w", databaseID, err)
+			return nil, fmt.Errorf("query data source %s: %w", dataSourceID, err)
 		}
 
 		allPages = append(allPages, result.Results...)
@@ -81,16 +140,36 @@ func (c *Client) QueryDatabase(ctx context.Context, databaseID string) ([]Databa
 		cursor = *result.NextCursor
 	}
 
-	c.logger.InfoContext(ctx, "database query complete",
-		"database_id", databaseID,
+	c.logger.InfoContext(ctx, "data source query complete",
+		"data_source_id", dataSourceID,
 		"pages_found", len(allPages))
 	return allPages, nil
+}
+
+// QueryDatabase queries a database and returns all pages.
+// In API 2025-09-03+, this resolves the database to its first data source
+// and queries that data source.
+func (c *Client) QueryDatabase(ctx context.Context, databaseID string) ([]DatabasePage, error) {
+	c.logger.DebugContext(ctx, "Querying database", slog.String("databaseId", databaseID))
+
+	// Resolve data source ID from database ID
+	container, err := c.GetDatabaseContainer(ctx, databaseID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(container.DataSources) == 0 {
+		return nil, fmt.Errorf("database %s: %w", databaseID, apperrors.ErrNoDataSources)
+	}
+
+	// Query first data source
+	return c.QueryDataSource(ctx, container.DataSources[0].ID)
 }
 
 // SearchFilter configures the search query.
 type SearchFilter struct {
 	Query       string
-	FilterType  string // "page" or "database"
+	FilterType  string // "page" or "data_source" (use "database" for backwards compat, mapped to "data_source")
 	StartCursor string
 	PageSize    int
 	// Sort by last_edited_time (only "ascending" or "descending" for timestamp sorting)
@@ -106,8 +185,13 @@ func (c *Client) Search(ctx context.Context, filter SearchFilter) (*SearchRespon
 	}
 
 	if filter.FilterType != "" {
+		filterValue := filter.FilterType
+		// API 2025-09-03 uses "data_source" instead of "database"
+		if filterValue == "database" {
+			filterValue = "data_source"
+		}
 		body["filter"] = map[string]string{
-			"value":    filter.FilterType,
+			"value":    filterValue,
 			"property": "object",
 		}
 	}

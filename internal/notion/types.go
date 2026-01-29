@@ -27,6 +27,8 @@ type Page struct {
 }
 
 // Database represents a Notion database.
+// In API version 2025-09-03, this is populated from both the database container
+// and the first data source.
 type Database struct {
 	Object         string         `json:"object"`
 	ID             string         `json:"id"`
@@ -45,6 +47,56 @@ type Database struct {
 	Archived       bool           `json:"archived"`
 	InTrash        bool           `json:"in_trash"`
 	IsInline       bool           `json:"is_inline"`
+	// DataSourceID is the ID of the primary data source (API 2025-09-03+).
+	DataSourceID string `json:"data_source_id,omitempty"`
+	// DataSources contains all data sources in this database (API 2025-09-03+).
+	DataSources []DataSourceInfo `json:"data_sources,omitempty"`
+}
+
+// DataSourceInfo represents basic info about a data source in a database container.
+type DataSourceInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// DataSource represents a full data source with schema (API 2025-09-03+).
+type DataSource struct {
+	Object         string         `json:"object"` // "data_source"
+	ID             string         `json:"id"`
+	Name           string         `json:"name"`
+	CreatedTime    time.Time      `json:"created_time"`
+	LastEditedTime time.Time      `json:"last_edited_time"`
+	CreatedBy      User           `json:"created_by"`
+	LastEditedBy   User           `json:"last_edited_by"`
+	Title          []RichText     `json:"title"`
+	Description    []RichText     `json:"description"`
+	Properties     map[string]any `json:"properties"`
+	Parent         Parent         `json:"parent"`
+	URL            string         `json:"url"`
+	Archived       bool           `json:"archived"`
+	InTrash        bool           `json:"in_trash"`
+}
+
+// DatabaseContainer represents the database container response (API 2025-09-03+).
+// GET /databases/{id} now returns this instead of the schema.
+type DatabaseContainer struct {
+	Object         string           `json:"object"` // "database"
+	ID             string           `json:"id"`
+	CreatedTime    time.Time        `json:"created_time"`
+	LastEditedTime time.Time        `json:"last_edited_time"`
+	CreatedBy      User             `json:"created_by"`
+	LastEditedBy   User             `json:"last_edited_by"`
+	DataSources    []DataSourceInfo `json:"data_sources"`
+	Title          []RichText       `json:"title"`
+	Description    []RichText       `json:"description"`
+	Icon           *Icon            `json:"icon"`
+	Cover          *FileBlock       `json:"cover"`
+	Parent         Parent           `json:"parent"`
+	URL            string           `json:"url"`
+	PublicURL      *string          `json:"public_url"`
+	IsInline       bool             `json:"is_inline"`
+	Archived       bool             `json:"archived"`
+	InTrash        bool             `json:"in_trash"`
 }
 
 // GetTitle returns the database title as a string.
@@ -199,12 +251,13 @@ func (u *User) Format() string {
 
 // Parent represents the parent of a page or block.
 type Parent struct {
-	Type       string `json:"type"`
-	PageID     string `json:"page_id,omitempty"`
-	DatabaseID string `json:"database_id,omitempty"`
-	BlockID    string `json:"block_id,omitempty"`
-	Workspace  bool   `json:"workspace,omitempty"`
-	SpaceID    string `json:"space_id,omitempty"` // For teamspaces
+	Type         string `json:"type"`
+	PageID       string `json:"page_id,omitempty"`
+	DatabaseID   string `json:"database_id,omitempty"`
+	DataSourceID string `json:"data_source_id,omitempty"` // API 2025-09-03+
+	BlockID      string `json:"block_id,omitempty"`
+	Workspace    bool   `json:"workspace,omitempty"`
+	SpaceID      string `json:"space_id,omitempty"` // For teamspaces
 }
 
 // IsWorkspaceLevel returns true if the parent is at workspace level (private or teamspace).

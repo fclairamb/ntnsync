@@ -42,7 +42,7 @@ const (
 	// BaseURL is the Notion API base URL.
 	BaseURL = "https://api.notion.com/v1"
 	// APIVersion is the Notion API version to use.
-	APIVersion = "2022-06-28"
+	APIVersion = "2025-09-03"
 
 	// HTTP client configuration.
 	httpTimeout = 30 * time.Second // Timeout for HTTP requests
