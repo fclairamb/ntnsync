@@ -202,12 +202,12 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 		builder.WriteString(fmt.Sprintf("file_path: %s\n", opts.FilePath))
 	}
 
-	// Creator and editor information
+	// Creator and editor information (formatted as "Name <email> [id]")
 	if page.CreatedBy.ID != "" {
-		builder.WriteString(fmt.Sprintf("created_by: %q\n", page.CreatedBy.ID))
+		builder.WriteString(fmt.Sprintf("created_by: %q\n", page.CreatedBy.Format()))
 	}
 	if page.LastEditedBy.ID != "" {
-		builder.WriteString(fmt.Sprintf("last_edited_by: %q\n", page.LastEditedBy.ID))
+		builder.WriteString(fmt.Sprintf("last_edited_by: %q\n", page.LastEditedBy.Format()))
 	}
 
 	builder.WriteString(fmt.Sprintf("last_edited: %s\n", page.LastEditedTime.Format(time.RFC3339)))

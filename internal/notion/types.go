@@ -3,6 +3,7 @@ package notion
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -137,8 +138,63 @@ func (p *Page) Title() string {
 
 // User represents a Notion user reference.
 type User struct {
-	Object string `json:"object"`
-	ID     string `json:"id"`
+	Object    string   `json:"object"`
+	ID        string   `json:"id"`
+	Type      string   `json:"type,omitempty"`
+	Name      string   `json:"name,omitempty"`
+	AvatarURL *string  `json:"avatar_url,omitempty"`
+	Person    *Person  `json:"person,omitempty"`
+	Bot       *BotInfo `json:"bot,omitempty"`
+}
+
+// Person contains person-specific user data.
+type Person struct {
+	Email string `json:"email"`
+}
+
+// BotInfo contains bot-specific user data within a User struct.
+type BotInfo struct {
+	Owner          *BotOwner `json:"owner,omitempty"`
+	WorkspaceOwner string    `json:"workspace_owner,omitempty"`
+}
+
+// BotOwner represents the owner of a bot.
+type BotOwner struct {
+	Type string `json:"type"`
+	User *User  `json:"user,omitempty"`
+}
+
+// shortIDLength is the number of characters to use for short user IDs.
+const shortIDLength = 8
+
+// Format returns the user in a human-readable format.
+// Format: "Name <email> [short_id]"
+// - Name defaults to "Unknown" if empty.
+// - Email is omitted if not available (person without email, or bot).
+// - Short ID is first 8 characters of the UUID.
+func (u *User) Format() string {
+	if u == nil {
+		return ""
+	}
+
+	name := u.Name
+	if name == "" {
+		name = "Unknown"
+	}
+
+	// Short ID (first 8 chars)
+	shortID := u.ID
+	if len(shortID) > shortIDLength {
+		shortID = shortID[:shortIDLength]
+	}
+
+	// Person with email: "Name <email> [id]"
+	if u.Type == "person" && u.Person != nil && u.Person.Email != "" {
+		return fmt.Sprintf("%s <%s> [%s]", name, u.Person.Email, shortID)
+	}
+
+	// No email available: "Name [id]"
+	return fmt.Sprintf("%s [%s]", name, shortID)
 }
 
 // Parent represents the parent of a page or block.
@@ -575,6 +631,12 @@ func ParseRichTextToMarkdown(richText []RichText) string {
 	for i := range richText {
 		item := &richText[i]
 		text := item.PlainText
+
+		// Handle user mentions with formatted user info
+		if item.Type == "mention" && item.Mention != nil && item.Mention.User != nil {
+			text = "@" + item.Mention.User.Format()
+		}
+
 		if item.Annotations != nil {
 			if item.Annotations.Code {
 				text = "`" + text + "`"

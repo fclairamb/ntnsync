@@ -9,17 +9,16 @@ import (
 	"testing"
 )
 
-func TestLocalTransaction_WriteStream(t *testing.T) {
-	t.Parallel()
+// setupWriteStreamTest creates an isolated test environment with its own tmpDir and transaction.
+func setupWriteStreamTest(t *testing.T) (context.Context, *LocalStore, Transaction, string) {
+	t.Helper()
 
-	// Create a temporary directory for testing
 	tmpDir, err := os.MkdirTemp("", "store-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(tmpDir) })
 
-	// Create a local store
 	store, err := NewLocalStore(tmpDir)
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -27,29 +26,42 @@ func TestLocalTransaction_WriteStream(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Create a transaction for all write operations
 	tx, err := store.BeginTx(ctx)
 	if err != nil {
 		t.Fatalf("failed to begin transaction: %v", err)
 	}
 
+	return ctx, store, tx, tmpDir
+}
+
+func TestLocalTransaction_WriteStream(t *testing.T) {
+	t.Parallel()
+
 	t.Run("stream write to new file", func(t *testing.T) {
 		t.Parallel()
+
+		ctx, store, tx, _ := setupWriteStreamTest(t)
 		testWriteStreamNewFile(ctx, t, store, tx)
 	})
 
 	t.Run("stream write creates parent directories", func(t *testing.T) {
 		t.Parallel()
+
+		ctx, store, tx, _ := setupWriteStreamTest(t)
 		testWriteStreamCreatesParentDirs(ctx, t, store, tx)
 	})
 
 	t.Run("stream write has correct permissions", func(t *testing.T) {
 		t.Parallel()
+
+		ctx, _, tx, tmpDir := setupWriteStreamTest(t)
 		testWriteStreamPermissions(ctx, t, tx, tmpDir)
 	})
 
 	t.Run("stream write is atomic", func(t *testing.T) {
 		t.Parallel()
+
+		ctx, _, tx, tmpDir := setupWriteStreamTest(t)
 		testWriteStreamAtomic(ctx, t, tx, tmpDir)
 	})
 }
