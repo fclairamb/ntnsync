@@ -677,18 +677,22 @@ func (c *Crawler) processPage(
 		simplifiedDepth = blockResult.MaxDepth
 	}
 
+	// Calculate download duration (API fetch time)
+	downloadDuration := fetchPageDuration + fetchBlocksDuration
+
 	// Convert to markdown
 	convertStart := time.Now()
 	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
-		Folder:          folder,
-		PageTitle:       page.Title(),
-		FilePath:        filePath,
-		LastSynced:      now,
-		NotionType:      "page",
-		IsRoot:          isRoot,
-		ParentID:        parentID,
-		FileProcessor:   c.makeFileProcessor(ctx, filePath, pageID),
-		SimplifiedDepth: simplifiedDepth,
+		Folder:           folder,
+		PageTitle:        page.Title(),
+		FilePath:         filePath,
+		LastSynced:       now,
+		NotionType:       "page",
+		IsRoot:           isRoot,
+		ParentID:         parentID,
+		FileProcessor:    c.makeFileProcessor(ctx, filePath, pageID),
+		SimplifiedDepth:  simplifiedDepth,
+		DownloadDuration: downloadDuration,
 	})
 	convertDuration := time.Since(convertStart)
 
@@ -878,17 +882,21 @@ func (c *Crawler) processDatabase(
 
 	now := time.Now()
 
+	// Calculate download duration (API fetch time)
+	downloadDuration := fetchDBDuration + queryDBDuration
+
 	// Convert to markdown
 	convertStart := time.Now()
 	content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
-		Folder:        folder,
-		PageTitle:     database.GetTitle(),
-		FilePath:      filePath,
-		LastSynced:    now,
-		NotionType:    "database",
-		IsRoot:        isRoot,
-		ParentID:      parentID,
-		FileProcessor: c.makeFileProcessor(ctx, filePath, dbID),
+		Folder:           folder,
+		PageTitle:        database.GetTitle(),
+		FilePath:         filePath,
+		LastSynced:       now,
+		NotionType:       "database",
+		IsRoot:           isRoot,
+		ParentID:         parentID,
+		FileProcessor:    c.makeFileProcessor(ctx, filePath, dbID),
+		DownloadDuration: downloadDuration,
 	})
 	convertDuration := time.Since(convertStart)
 

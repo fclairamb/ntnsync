@@ -34,15 +34,16 @@ type FileProcessor func(fileURL string) string
 
 // ConvertOptions contains additional metadata for conversion.
 type ConvertOptions struct {
-	Folder          string        // Folder name for this page
-	PageTitle       string        // Page title (used for child page link paths)
-	FilePath        string        // File path (stored in frontmatter)
-	LastSynced      time.Time     // When we synced this page
-	NotionType      string        // Type: "page" or "database"
-	IsRoot          bool          // Whether this is a root page
-	ParentID        string        // Resolved parent page/database ID (empty for root pages)
-	FileProcessor   FileProcessor // Optional callback to process file URLs
-	SimplifiedDepth int           // Depth limit used if page was depth-limited (0 if not limited)
+	Folder           string        // Folder name for this page
+	PageTitle        string        // Page title (used for child page link paths)
+	FilePath         string        // File path (stored in frontmatter)
+	LastSynced       time.Time     // When we synced this page
+	NotionType       string        // Type: "page" or "database"
+	IsRoot           bool          // Whether this is a root page
+	ParentID         string        // Resolved parent page/database ID (empty for root pages)
+	FileProcessor    FileProcessor // Optional callback to process file URLs
+	SimplifiedDepth  int           // Depth limit used if page was depth-limited (0 if not limited)
+	DownloadDuration time.Duration // Time to download page from Notion API
 }
 
 // NewConverter creates a new converter with default settings.
@@ -233,6 +234,11 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 	// Include simplified_depth if page was depth-limited
 	if opts.SimplifiedDepth > 0 {
 		builder.WriteString(fmt.Sprintf("simplified_depth: %d\n", opts.SimplifiedDepth))
+	}
+
+	// Include download duration if set
+	if opts.DownloadDuration > 0 {
+		builder.WriteString(fmt.Sprintf("download_duration: %s\n", opts.DownloadDuration))
 	}
 
 	// Include properties for database pages (pages whose parent is a database)
