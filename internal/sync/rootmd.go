@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/fclairamb/ntnsync/internal/apperrors"
@@ -13,10 +14,6 @@ import (
 
 const (
 	rootMdFile = "root.md"
-
-	// minTableColumns is the minimum number of columns in a root.md table row.
-	// Format: | folder | enabled | url | = 4 parts when split by |.
-	minTableColumns = 4
 )
 
 // RootEntry represents a row in root.md.
@@ -35,9 +32,10 @@ type RootManifest struct {
 // rootMdTemplate is the default content for a new root.md file.
 const rootMdTemplate = `# Root Pages
 
-| folder | enabled | url |
-|--------|---------|-----|
 `
+
+// taskListPattern matches task list entries: - [x] **folder**: url.
+var taskListPattern = regexp.MustCompile(`^- \[([ xX])\] \*\*([^*]+)\*\*:\s*(.+)$`)
 
 // ParseRootMd reads and parses root.md from the repository root.
 // Returns nil manifest and nil error if the file doesn't exist.
@@ -51,43 +49,21 @@ func (c *Crawler) ParseRootMd(ctx context.Context) (*RootManifest, error) {
 	return parseRootMdContent(data)
 }
 
-// parseRootMdContent parses the root.md content.
+// parseRootMdContent parses the root.md content using task list format.
+// Format: - [x] **folder**: url.
 func parseRootMdContent(data []byte) (*RootManifest, error) {
 	manifest := &RootManifest{}
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 
-	// Find table header
-	foundHeader := false
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if strings.HasPrefix(line, "| folder") && strings.Contains(line, "enabled") && strings.Contains(line, "url") {
-			foundHeader = true
-			break
-		}
-	}
 
-	if !foundHeader {
-		return manifest, nil // No table found, return empty manifest
-	}
-
-	// Skip separator line (|--------|---------|-----|)
-	if scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if !strings.HasPrefix(line, "|") || !strings.Contains(line, "-") {
-			return nil, apperrors.ErrInvalidRootMdTable
-		}
-	}
-
-	// Parse data rows
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || !strings.HasPrefix(line, "|") {
-			continue // Skip empty lines or non-table lines
-		}
-
-		entry, err := parseRootMdRow(line)
+		entry, err := parseTaskListEntry(line)
 		if err != nil {
-			continue // Skip invalid rows
+			continue // Skip invalid lines
+		}
+		if entry == nil {
+			continue // Line doesn't match pattern
 		}
 
 		manifest.Entries = append(manifest.Entries, *entry)
@@ -100,25 +76,24 @@ func parseRootMdContent(data []byte) (*RootManifest, error) {
 	return manifest, nil
 }
 
-// parseRootMdRow parses a single table row from root.md.
-func parseRootMdRow(line string) (*RootEntry, error) {
-	// Split by | and trim
-	parts := strings.Split(line, "|")
-	if len(parts) < minTableColumns {
-		return nil, fmt.Errorf("%w: not enough columns", apperrors.ErrInvalidRootMdRow)
+// parseTaskListEntry parses a single task list entry from root.md.
+// Format: - [x] **folder**: url.
+// Returns nil entry (not error) if line doesn't match the pattern.
+func parseTaskListEntry(line string) (*RootEntry, error) {
+	matches := taskListPattern.FindStringSubmatch(line)
+	if matches == nil {
+		return nil, nil //nolint:nilnil // nil entry indicates line doesn't match pattern
 	}
 
-	// Parts[0] is empty (before first |), parts[1] is folder, parts[2] is enabled, parts[3] is url
-	folder := strings.TrimSpace(parts[1])
-	enabledStr := strings.TrimSpace(parts[2])
-	url := strings.TrimSpace(parts[3])
+	checkboxState := matches[1]
+	folder := strings.TrimSpace(matches[2])
+	url := strings.TrimSpace(matches[3])
 
 	if folder == "" || url == "" {
 		return nil, fmt.Errorf("%w: empty folder or url", apperrors.ErrInvalidRootMdRow)
 	}
 
-	// Parse enabled checkbox
-	enabled := enabledStr == "[x]" || enabledStr == "[X]"
+	enabled := checkboxState == "x" || checkboxState == "X"
 
 	// Extract page ID from URL
 	pageID, err := notion.ParsePageIDOrURL(url)
@@ -145,21 +120,19 @@ func (c *Crawler) WriteRootMd(ctx context.Context, manifest *RootManifest) error
 	return nil
 }
 
-// formatRootMd formats the manifest as markdown content.
+// formatRootMd formats the manifest as markdown content using task list format.
 func formatRootMd(manifest *RootManifest) string {
 	var buf bytes.Buffer
 
 	buf.WriteString("# Root Pages\n\n")
-	buf.WriteString("| folder | enabled | url |\n")
-	buf.WriteString("|--------|---------|-----|\n")
 
 	for i := range manifest.Entries {
 		entry := &manifest.Entries[i]
-		enabled := "[ ]"
+		checkbox := "[ ]"
 		if entry.Enabled {
-			enabled = "[x]"
+			checkbox = "[x]"
 		}
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s |\n", entry.Folder, enabled, entry.URL))
+		buf.WriteString(fmt.Sprintf("- %s **%s**: %s\n", checkbox, entry.Folder, entry.URL))
 	}
 
 	return buf.String()

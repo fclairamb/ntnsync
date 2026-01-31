@@ -91,21 +91,19 @@ NTN_COMMIT_PERIOD=1m ./ntnsync sync
 
 ## Root Page Configuration
 
-Root pages are configured in `root.md` at the repository root. This file uses a markdown table format:
+Root pages are configured in `root.md` at the repository root. This file uses a task list format with interactive checkboxes:
 
 ```markdown
 # Root Pages
 
-| folder | enabled | url |
-|--------|---------|-----|
-| tech | [x] | https://notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d |
-| product | [x] | https://notion.so/Product-Specs-abc123def456 |
-| archive | [ ] | https://notion.so/Old-Docs-disabled123 |
+- [x] **tech**: https://notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d
+- [x] **product**: https://notion.so/Product-Specs-abc123def456
+- [ ] **archive**: https://notion.so/Old-Docs-disabled123
 ```
 
-**Table columns**:
-- `folder`: Target folder name for the root page and its children
-- `enabled`: Checkbox (`[x]` enabled, `[ ]` disabled)
+**Entry format**: `- [x] **folder**: url`
+- Checkbox (`[x]` enabled, `[ ]` disabled) - clickable in GitHub
+- `**folder**`: Target folder name for the root page and its children
 - `url`: Notion page or database URL
 
 **Behavior**:
@@ -329,9 +327,7 @@ ntnsync reindex [--dry-run]
 cat > root.md << 'EOF'
 # Root Pages
 
-| folder | enabled | url |
-|--------|---------|-----|
-| tech | [x] | https://www.notion.so/Wiki-2c536f5e... |
+- [x] **tech**: https://www.notion.so/Wiki-2c536f5e...
 EOF
 
 # 2. Pull to queue all pages (use --since for first pull)

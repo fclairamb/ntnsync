@@ -14,10 +14,8 @@ See `docs/` for detailed documentation:
 ```markdown
 # Root Pages
 
-| folder | enabled | url |
-|--------|---------|-----|
-| tech | [x] | https://notion.so/Wiki-abc123 |
-| product | [ ] | https://notion.so/Specs-def456 |
+- [x] **tech**: https://notion.so/Wiki-abc123
+- [ ] **product**: https://notion.so/Specs-def456
 ```
 
 **Common commands**:
