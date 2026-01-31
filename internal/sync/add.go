@@ -334,7 +334,8 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 	}
 
 	// Trace parent chain to find folder and determine hierarchy
-	parentChain, targetFolder, err := c.traceParentChain(ctx, page, folder)
+	// Note: foundRoot is ignored for add command - we allow adding pages not under a root
+	parentChain, targetFolder, _, err := c.traceParentChain(ctx, page, folder)
 	if err != nil {
 		return fmt.Errorf("trace parent chain: %w", err)
 	}
@@ -379,10 +380,11 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 }
 
 // traceParentChain walks up the parent chain until it finds an existing root page or workspace.
-// Returns the chain of missing parents (in order from child to root) and the folder to use.
+// Returns the chain of missing parents (in order from child to root), the folder to use,
+// and whether a registered root was found (foundRoot=false means page is not under any root in root.md).
 func (c *Crawler) traceParentChain(
 	ctx context.Context, page *notion.Page, requestedFolder string,
-) ([]*notion.Page, string, error) {
+) ([]*notion.Page, string, bool, error) {
 	var missingParents []*notion.Page
 	currentPage := page
 
@@ -397,11 +399,20 @@ func (c *Crawler) traceParentChain(
 		// Check if parent exists in registry
 		parentReg, err := c.loadPageRegistry(ctx, parentID)
 		if err == nil {
-			// Found existing parent in registry - use its folder
-			c.logger.DebugContext(ctx, "found existing parent in registry",
+			// Found existing parent in registry - verify it's under an enabled root
+			enabled, rootID, _ := c.isRootEnabled(ctx, parentID)
+			if enabled {
+				c.logger.DebugContext(ctx, "found existing parent in registry under enabled root",
+					"parent_id", parentID,
+					"folder", parentReg.Folder,
+					"root_id", rootID)
+				return missingParents, parentReg.Folder, true, nil
+			}
+			// Parent is in registry but not under an enabled root - page is orphaned
+			c.logger.DebugContext(ctx, "parent in registry but not under enabled root",
 				"parent_id", parentID,
-				"folder", parentReg.Folder)
-			return missingParents, parentReg.Folder, nil
+				"root_id", rootID)
+			return missingParents, parentReg.Folder, false, nil
 		}
 
 		// Parent not in registry - fetch it and add to chain
@@ -413,10 +424,10 @@ func (c *Crawler) traceParentChain(
 				// For databases, we'll fetch and convert to a page-like structure
 				parentPage, err = c.fetchDatabaseAsPage(ctx, parentID)
 				if err != nil {
-					return nil, "", fmt.Errorf("fetch parent database %s: %w", parentID, err)
+					return nil, "", false, fmt.Errorf("fetch parent database %s: %w", parentID, err)
 				}
 			} else {
-				return nil, "", fmt.Errorf("fetch parent page %s: %w", parentID, err)
+				return nil, "", false, fmt.Errorf("fetch parent page %s: %w", parentID, err)
 			}
 		}
 
@@ -435,7 +446,7 @@ func (c *Crawler) traceParentChain(
 		"folder", targetFolder,
 		"missing_parents", len(missingParents))
 
-	return missingParents, targetFolder, nil
+	return missingParents, targetFolder, false, nil
 }
 
 // fetchDatabaseAsPage fetches a database and converts it to a Page structure for parent chain processing.
