@@ -719,3 +719,69 @@ func TestConvertBlock_Unknown(t *testing.T) {
 		t.Errorf("convertBlock() should return empty string for unknown block type, got %q", result)
 	}
 }
+
+func TestConvertWithOptions_DownloadDuration(t *testing.T) {
+	t.Parallel()
+
+	c := NewConverter()
+	page := &notion.Page{
+		ID:             "123e4567-e89b-12d3-a456-426614174000",
+		LastEditedTime: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		URL:            "https://notion.so/test",
+		Properties: map[string]notion.Property{
+			"title": {
+				ID:   "title",
+				Type: "title",
+				Title: []notion.RichText{
+					{
+						Type:      "text",
+						PlainText: "Test Page",
+					},
+				},
+			},
+		},
+	}
+	blocks := []notion.Block{}
+
+	t.Run("includes download_duration when set", func(t *testing.T) {
+		t.Parallel()
+		opts := &ConvertOptions{
+			DownloadDuration: 1*time.Second + 234*time.Millisecond,
+		}
+
+		result := c.ConvertWithOptions(page, blocks, opts)
+		resultStr := string(result)
+
+		if !strings.Contains(resultStr, "download_duration: 1.234s") {
+			t.Errorf("ConvertWithOptions() should include download_duration: 1.234s, got:\n%s", resultStr)
+		}
+	})
+
+	t.Run("omits download_duration when zero", func(t *testing.T) {
+		t.Parallel()
+		opts := &ConvertOptions{
+			DownloadDuration: 0,
+		}
+
+		result := c.ConvertWithOptions(page, blocks, opts)
+		resultStr := string(result)
+
+		if strings.Contains(resultStr, "download_duration") {
+			t.Errorf("ConvertWithOptions() should not include download_duration when zero, got:\n%s", resultStr)
+		}
+	})
+
+	t.Run("formats milliseconds correctly", func(t *testing.T) {
+		t.Parallel()
+		opts := &ConvertOptions{
+			DownloadDuration: 500 * time.Millisecond,
+		}
+
+		result := c.ConvertWithOptions(page, blocks, opts)
+		resultStr := string(result)
+
+		if !strings.Contains(resultStr, "download_duration: 500ms") {
+			t.Errorf("ConvertWithOptions() should include download_duration: 500ms, got:\n%s", resultStr)
+		}
+	})
+}
