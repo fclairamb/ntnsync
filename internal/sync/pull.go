@@ -171,7 +171,7 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 			result.UpdatedPages++
 		} else {
 			// New page - need to determine folder by tracing parent chain
-			parentChain, detectedFolder, err := c.traceParentChain(ctx, page, "")
+			parentChain, detectedFolder, foundRoot, err := c.traceParentChain(ctx, page, "")
 			if err != nil {
 				c.logger.WarnContext(ctx, "failed to trace parent chain, skipping",
 					"page_id", pageID,
@@ -180,6 +180,16 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 				result.PagesSkipped++
 				continue
 			}
+
+			// Skip pages that are not under any root in root.md
+			if !foundRoot {
+				c.logger.DebugContext(ctx, "skipping page not under any root",
+					"page_id", pageID,
+					"title", page.Title())
+				result.PagesSkipped++
+				continue
+			}
+
 			folder = detectedFolder
 			result.NewPages++
 
