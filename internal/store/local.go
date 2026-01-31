@@ -662,12 +662,27 @@ func (s *LocalStore) ensureRemoteConfigured(repo *git.Repository) (*git.Reposito
 	}
 
 	// Check if remote exists
-	if _, err := repo.Remote("origin"); err == nil {
+	remote, err := repo.Remote("origin")
+	if err != nil {
+		// Remote doesn't exist, add it
+		s.logger.Info("adding remote origin to existing repo", "url", s.remoteConfig.URL)
+		if err := s.addRemoteToRepo(repo); err != nil {
+			return nil, err
+		}
 		return repo, nil
 	}
 
-	// Remote doesn't exist, add it
-	s.logger.Info("adding remote origin to existing repo", "url", s.remoteConfig.URL)
+	// Remote exists, check if URL matches
+	cfg := remote.Config()
+	if len(cfg.URLs) > 0 && cfg.URLs[0] == s.remoteConfig.URL {
+		return repo, nil
+	}
+
+	// URL mismatch, update the remote
+	s.logger.Info("updating remote origin URL", "old", cfg.URLs, "new", s.remoteConfig.URL)
+	if err := repo.DeleteRemote("origin"); err != nil {
+		return nil, fmt.Errorf("delete old remote origin: %w", err)
+	}
 	if err := s.addRemoteToRepo(repo); err != nil {
 		return nil, err
 	}
