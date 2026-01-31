@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.6.0](https://github.com/fclairamb/ntnsync/compare/v0.5.0...v0.6.0) (2026-01-31)
+
+
+### Features
+
+* **notion:** add user info format with name, email, and short ID ([#29](https://github.com/fclairamb/ntnsync/issues/29)) ([67b9de3](https://github.com/fclairamb/ntnsync/commit/67b9de36d0f50f12359f0eaa912d8d38bc39fb05))
+* **notion:** upgrade to API version 2025-09-03 ([#31](https://github.com/fclairamb/ntnsync/issues/31)) ([7e44184](https://github.com/fclairamb/ntnsync/commit/7e44184b0071540aff90e16d6a7811ee50f0412c))
+* **sync:** add ntnsync_version to all generated files ([#27](https://github.com/fclairamb/ntnsync/issues/27)) ([21539ee](https://github.com/fclairamb/ntnsync/commit/21539eeb5911fe7cdecaffebec13b5156035d984))
+* **sync:** change root.md format to task list for GitHub interactivity ([#33](https://github.com/fclairamb/ntnsync/issues/33)) ([4a90370](https://github.com/fclairamb/ntnsync/commit/4a90370eff0af14746803ba5e653d32cb816088a))
+* **sync:** replace add command with root.md manifest file ([#30](https://github.com/fclairamb/ntnsync/issues/30)) ([df4477b](https://github.com/fclairamb/ntnsync/commit/df4477bef2e445e60ab843b3358dfed22b430a16))
+
+
+### Bug Fixes
+
+* **store:** update remote origin URL when it changes ([#32](https://github.com/fclairamb/ntnsync/issues/32)) ([4af69da](https://github.com/fclairamb/ntnsync/commit/4af69da93922bd80c243b0b8907f19fd4e487ae5))
+
 ## [0.5.0](https://github.com/fclairamb/ntnsync/compare/v0.4.0...v0.5.0) (2026-01-29)
 
 
