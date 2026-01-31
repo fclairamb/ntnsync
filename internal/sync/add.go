@@ -333,8 +333,8 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 		return fmt.Errorf("fetch page: %w", err)
 	}
 
-	// Trace parent chain to find folder and determine hierarchy
-	// Note: foundRoot is ignored for add command - we allow adding pages not under a root
+	// Trace parent chain to find folder and determine hierarchy.
+	// The foundRoot return value is ignored here since the add command allows adding pages not under a root.
 	parentChain, targetFolder, _, err := c.traceParentChain(ctx, page, folder)
 	if err != nil {
 		return fmt.Errorf("trace parent chain: %w", err)
