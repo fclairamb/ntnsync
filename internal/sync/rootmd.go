@@ -34,7 +34,7 @@ const rootMdTemplate = `# Root Pages
 
 `
 
-// taskListPattern matches task list entries: - [x] **folder**: url
+// taskListPattern matches task list entries: - [x] **folder**: url.
 var taskListPattern = regexp.MustCompile(`^- \[([ xX])\] \*\*([^*]+)\*\*:\s*(.+)$`)
 
 // ParseRootMd reads and parses root.md from the repository root.
@@ -50,7 +50,7 @@ func (c *Crawler) ParseRootMd(ctx context.Context) (*RootManifest, error) {
 }
 
 // parseRootMdContent parses the root.md content using task list format.
-// Format: - [x] **folder**: url
+// Format: - [x] **folder**: url.
 func parseRootMdContent(data []byte) (*RootManifest, error) {
 	manifest := &RootManifest{}
 	scanner := bufio.NewScanner(bytes.NewReader(data))
@@ -77,12 +77,12 @@ func parseRootMdContent(data []byte) (*RootManifest, error) {
 }
 
 // parseTaskListEntry parses a single task list entry from root.md.
-// Format: - [x] **folder**: url
+// Format: - [x] **folder**: url.
 // Returns nil entry (not error) if line doesn't match the pattern.
 func parseTaskListEntry(line string) (*RootEntry, error) {
 	matches := taskListPattern.FindStringSubmatch(line)
 	if matches == nil {
-		return nil, nil // Line doesn't match pattern
+		return nil, nil //nolint:nilnil // nil entry indicates line doesn't match pattern
 	}
 
 	checkboxState := matches[1]
@@ -90,7 +90,7 @@ func parseTaskListEntry(line string) (*RootEntry, error) {
 	url := strings.TrimSpace(matches[3])
 
 	if folder == "" || url == "" {
-		return nil, fmt.Errorf("empty folder or url")
+		return nil, fmt.Errorf("%w: empty folder or url", apperrors.ErrInvalidRootMdRow)
 	}
 
 	enabled := checkboxState == "x" || checkboxState == "X"
