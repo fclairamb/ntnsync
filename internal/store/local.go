@@ -199,6 +199,7 @@ func (s *LocalStore) Pull(ctx context.Context) error {
 }
 
 // pullLocked performs the actual pull operation. Caller must hold s.mu.
+// It handles diverged branches by creating a merge commit when necessary.
 func (s *LocalStore) pullLocked(ctx context.Context) error {
 	auth, err := s.remoteConfig.GetAuth()
 	if err != nil {
@@ -227,10 +228,57 @@ func (s *LocalStore) pullLocked(ctx context.Context) error {
 			s.logger.InfoContext(ctx, msgRemoteRepoEmpty+", nothing to pull")
 			return nil
 		}
+		// Handle non-fast-forward case (diverged branches)
+		if strings.Contains(err.Error(), "non-fast-forward") {
+			s.logger.InfoContext(ctx, "branches diverged, fetching and merging")
+			return s.fetchAndMergeLocked(ctx, auth, worktree)
+		}
 		return fmt.Errorf("pull: %w", err)
 	}
 
 	s.logger.InfoContext(ctx, "pull complete")
+	return nil
+}
+
+// fetchAndMergeLocked fetches remote changes and resets to remote.
+// For auto-generated content like ntnsync, we favor the remote version
+// since it's already published. The sync process will re-apply any changes.
+func (s *LocalStore) fetchAndMergeLocked(ctx context.Context, auth transport.AuthMethod, worktree *git.Worktree) error {
+	// Fetch remote changes
+	err := s.repo.FetchContext(ctx, &git.FetchOptions{
+		RemoteName: "origin",
+		Auth:       auth,
+	})
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return fmt.Errorf("fetch: %w", err)
+	}
+
+	// Get remote branch reference
+	remoteBranch := plumbing.NewRemoteReferenceName("origin", s.remoteConfig.Branch)
+	remoteRef, err := s.repo.Reference(remoteBranch, true)
+	if err != nil {
+		return fmt.Errorf("get remote ref: %w", err)
+	}
+
+	s.logger.InfoContext(ctx, "resetting to remote",
+		"remote_commit", remoteRef.Hash().String()[:7])
+
+	// Reset to remote - this is safe for auto-generated content
+	if err := worktree.Reset(&git.ResetOptions{
+		Commit: remoteRef.Hash(),
+		Mode:   git.HardReset,
+	}); err != nil {
+		return fmt.Errorf("reset to remote: %w", err)
+	}
+
+	// Update the local branch reference to point to the remote commit
+	branchRef := plumbing.NewBranchReferenceName(s.remoteConfig.Branch)
+	ref := plumbing.NewHashReference(branchRef, remoteRef.Hash())
+	if err := s.repo.Storer.SetReference(ref); err != nil {
+		return fmt.Errorf("update branch ref: %w", err)
+	}
+
+	s.logger.InfoContext(ctx, "reset to remote complete")
 	return nil
 }
 
