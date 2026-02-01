@@ -19,6 +19,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          # Must match types in release-please-config.json
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            style
+            build
+            docs
+            chore
+            test
+            ci
+            revert
+            release
           scopes: |
             cli
             docker
