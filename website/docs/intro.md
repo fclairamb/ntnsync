@@ -41,22 +41,32 @@ docker pull ghcr.io/fclairamb/ntnsync:latest
    export NOTION_TOKEN=secret_xxx
    ```
 
-3. **Add a root page**
+3. **Create root.md with your root pages**
 
    ```bash
-   ntnsync add https://www.notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d --folder tech
+   cat > notion/root.md << 'EOF'
+   # Root Pages
+
+   - [x] **tech**: https://www.notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d
+   EOF
    ```
 
-4. **Sync the queue**
+4. **Pull pages to queue (use --since for first pull)**
+
+   ```bash
+   ntnsync pull --since 30d
+   ```
+
+5. **Sync the queue**
 
    ```bash
    NTN_COMMIT=true ntnsync sync
    ```
 
-5. **Pull updates later**
+6. **Pull updates later**
 
    ```bash
-   ntnsync pull --since 24h
+   ntnsync pull
    NTN_COMMIT=true ntnsync sync
    ```
 

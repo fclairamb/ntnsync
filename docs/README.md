@@ -16,7 +16,7 @@ ntnsync synchronizes Notion pages to a local git repository as markdown files.
 ntnsync uses a **folder-based organization** where pages are grouped into named folders (e.g., `tech`, `product`). Each folder contains root pages and their nested children.
 
 **Sync workflow**:
-1. `add` - Add a root page to a folder
+1. Configure root pages in `root.md`
 2. `pull` - Queue pages that changed since last pull
 3. `sync` - Process the queue, download pages, write markdown
 
