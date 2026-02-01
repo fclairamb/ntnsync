@@ -33,7 +33,7 @@ func (c *Client) GetPage(ctx context.Context, pageID string) (*Page, error) {
 	if err := c.do(ctx, "GET", path, nil, &page); err != nil {
 		return nil, fmt.Errorf("get page %s: %w", pageID, err)
 	}
-	c.logger.DebugContext(ctx, "Page fetched", "time_spent_ms", time.Since(before).Milliseconds())
+	c.logger.DebugContext(ctx, "Page fetched", "duration_ms", time.Since(before).Milliseconds())
 	return &page, nil
 }
 
@@ -85,7 +85,7 @@ func (c *Client) GetDatabase(ctx context.Context, databaseID string) (*Database,
 		return nil, fmt.Errorf("get data source for database %s: %w", databaseID, err)
 	}
 
-	c.logger.DebugContext(ctx, "Database fetched", "time_spent_ms", time.Since(before).Milliseconds())
+	c.logger.DebugContext(ctx, "Database fetched", "duration_ms", time.Since(before).Milliseconds())
 
 	// Return backwards-compatible Database struct
 	return &Database{
@@ -226,7 +226,7 @@ func (c *Client) Search(ctx context.Context, filter SearchFilter) (*SearchRespon
 	if err := c.do(ctx, "POST", "/search", body, &result); err != nil {
 		return nil, fmt.Errorf("search: %w", err)
 	}
-	c.logger.DebugContext(ctx, "Search returned", "time_spent_ms", time.Since(timeBefore).Milliseconds())
+	c.logger.DebugContext(ctx, "Search returned", "duration_ms", time.Since(timeBefore).Milliseconds())
 
 	return &result, nil
 }

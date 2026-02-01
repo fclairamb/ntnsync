@@ -202,7 +202,7 @@ func (c *Crawler) ProcessQueueWithCallback(
 		"skipped", totalSkipped,
 		"files_written", totalFilesWritten,
 		"queue_files", totalQueueFilesProcessed,
-		"elapsed_ms", time.Since(startTime).Milliseconds(),
+		"duration_ms", time.Since(startTime).Milliseconds(),
 	}
 
 	limitReached := false
