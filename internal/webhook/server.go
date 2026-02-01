@@ -180,11 +180,10 @@ func loggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 		next.ServeHTTP(wrapped, req)
 
 		// Log response
-		duration := time.Since(start)
 		logger.Info("http response",
 			"method", req.Method,
 			"path", req.URL.Path,
 			"status", wrapped.statusCode,
-			"duration", duration)
+			"duration_ms", time.Since(start).Milliseconds())
 	})
 }

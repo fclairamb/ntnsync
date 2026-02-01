@@ -213,7 +213,7 @@ func (c *Client) executeRequest(
 	}
 
 	c.logger.DebugContext(ctx, "API response",
-		reqInfo.logArgs("status", resp.StatusCode, "duration", time.Since(reqInfo.startTime))...)
+		reqInfo.logArgs("status", resp.StatusCode, "duration_ms", time.Since(reqInfo.startTime).Milliseconds())...)
 
 	return true, nil
 }
