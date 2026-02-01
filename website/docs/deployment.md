@@ -51,8 +51,9 @@ spec:
       containers:
       - name: ntnsync
         image: ghcr.io/fclairamb/ntnsync:latest
+        args: ["serve", "--port", "8080"]
         ports:
-        - containerPort: 80
+        - containerPort: 8080
         envFrom:
         - secretRef:
             name: ntnsync
@@ -74,7 +75,7 @@ spec:
   ports:
   - name: http
     port: 80
-    targetPort: 80
+    targetPort: 8080
   selector:
     app: ntnsync
 ---
@@ -129,6 +130,9 @@ Configure ntnsync using environment variables in the Secret:
 | `NTN_PUSH` | Set to `true` to push to remote |
 | `NTN_GIT_URL` | Remote git repository URL |
 | `NTN_GIT_PASS` | Git password/token for authentication |
+| `NTN_WEBHOOK_SECRET` | Webhook secret for signature verification |
+| `NTN_WEBHOOK_AUTO_SYNC` | Auto-sync after receiving events (default: `true`) |
+| `NTN_WEBHOOK_SYNC_DELAY` | Debounce delay before processing (e.g., `5s`) |
 
 ### Persistent Storage
 
@@ -171,3 +175,23 @@ kubectl logs -n ntnsync -l app=ntnsync
 # Test the service
 kubectl port-forward -n ntnsync svc/ntnsync 8080:80
 ```
+
+### Configuring Notion Webhooks
+
+Once deployed, configure your Notion integration to send webhooks:
+
+1. Go to your [Notion integrations page](https://www.notion.so/my-integrations)
+2. Select your integration
+3. Enable webhooks and set the URL to `https://ntnsync.example.com/webhooks/notion`
+4. Copy the webhook signing secret and add it to your Kubernetes secret:
+
+```bash
+kubectl patch secret ntnsync -n ntnsync \
+  --type='json' \
+  -p='[{"op": "add", "path": "/data/NTN_WEBHOOK_SECRET", "value": "'$(echo -n "your-secret" | base64)'"}]'
+```
+
+The webhook server will:
+- Receive page update events from Notion
+- Queue changed pages for sync
+- Automatically process the queue and commit changes (if `NTN_COMMIT=true`)

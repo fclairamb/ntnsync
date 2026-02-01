@@ -318,6 +318,94 @@ ntnsync reindex [--dry-run]
 - Clean up duplicate pages
 - Rebuild after manual file edits
 
+### remote
+
+Manage remote git repository configuration.
+
+```bash
+ntnsync remote show
+ntnsync remote test
+```
+
+**Subcommands**:
+
+| Subcommand | Description |
+|------------|-------------|
+| `show` | Display current remote configuration from environment variables |
+| `test` | Test connection to remote repository |
+
+**Environment Variables**:
+
+| Variable | Description |
+|----------|-------------|
+| `NTN_GIT_URL` | Remote git repository URL (HTTPS or SSH) |
+| `NTN_GIT_PASS` | Git password/token for HTTPS authentication |
+| `NTN_GIT_BRANCH` | Branch name (default: `main`) |
+| `NTN_GIT_USER` | Git commit author name (default: `ntnsync`) |
+| `NTN_GIT_EMAIL` | Git commit author email (default: `ntnsync@localhost`) |
+| `NTN_STORAGE` | Storage mode: `local` or `remote` (auto-detected from `NTN_GIT_URL`) |
+
+**Examples**:
+```bash
+# Show current configuration
+ntnsync remote show
+
+# Test connection to remote
+NTN_GIT_URL=https://github.com/user/docs.git NTN_GIT_PASS=$TOKEN ntnsync remote test
+```
+
+### serve
+
+Start a webhook server to receive Notion events for real-time sync.
+
+```bash
+ntnsync serve [options]
+```
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--port`, `-p` | `NTN_WEBHOOK_PORT` | `8080` | HTTP port to listen on |
+| `--secret` | `NTN_WEBHOOK_SECRET` | | Webhook secret for signature verification |
+| `--path` | `NTN_WEBHOOK_PATH` | `/webhooks/notion` | Webhook endpoint path |
+| `--auto-sync` | `NTN_WEBHOOK_AUTO_SYNC` | `true` | Automatically sync after receiving events |
+| `--sync-delay` | `NTN_WEBHOOK_SYNC_DELAY` | `0` | Debounce delay before processing (e.g., `5s`) |
+
+**Behavior**:
+- Listens for Notion webhook events
+- Queues changed pages when events arrive
+- Automatically triggers sync if `--auto-sync` is enabled
+- Verifies webhook signatures when `--secret` is configured
+- Uses debouncing with `--sync-delay` to batch rapid changes
+
+**Security**:
+- Always configure `--secret` in production for signature verification
+- Without a secret, any request can trigger syncs
+
+**Examples**:
+```bash
+# Start webhook server on port 8080
+ntnsync serve
+
+# With signature verification and custom port
+ntnsync serve --port 3000 --secret $WEBHOOK_SECRET
+
+# With debounce delay for batching changes
+ntnsync serve --sync-delay 10s
+
+# Disable auto-sync (queue only)
+ntnsync serve --auto-sync=false
+```
+
+## Webhook Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NTN_WEBHOOK_PORT` | `8080` | HTTP port for webhook server |
+| `NTN_WEBHOOK_SECRET` | | Secret for signature verification |
+| `NTN_WEBHOOK_PATH` | `/webhooks/notion` | Webhook endpoint path |
+| `NTN_WEBHOOK_AUTO_SYNC` | `true` | Auto-sync after receiving events |
+| `NTN_WEBHOOK_SYNC_DELAY` | `0` | Debounce delay before processing |
+
 ## Typical Workflows
 
 ### First-time sync
@@ -369,3 +457,19 @@ export NTN_GIT_PASS=$GITHUB_TOKEN
 ntnsync pull --since 2h
 ntnsync sync
 ```
+
+### Real-time sync with webhooks
+
+```bash
+# Set up environment
+export NOTION_TOKEN=secret_xxx
+export NTN_COMMIT=true
+export NTN_GIT_URL=https://github.com/user/docs.git
+export NTN_GIT_PASS=$GITHUB_TOKEN
+export NTN_WEBHOOK_SECRET=$WEBHOOK_SECRET
+
+# Start webhook server
+ntnsync serve --port 8080 --sync-delay 5s
+```
+
+Configure your Notion integration to send webhooks to `https://your-server:8080/webhooks/notion`.

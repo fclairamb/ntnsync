@@ -39,6 +39,28 @@ NTN_LOG_FORMAT=json ./ntnsync sync -v
 {"time":"2026-01-24T10:30:46Z","level":"DEBUG","msg":"Processing page","page_id":"abc123"}
 ```
 
+## Performance Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NTN_BLOCK_DEPTH` | `0` | Maximum depth for block discovery (0 = unlimited) |
+| `NTN_QUEUE_DELAY` | `0` | Delay between processing queue files (e.g., `5s`, `1m`) |
+| `NTN_MAX_FILE_SIZE` | `5MB` | Maximum file size to download |
+
+**`NTN_BLOCK_DEPTH`**: Limits how deeply nested blocks are fetched.
+- `0` (default): Fetch all nested blocks (unlimited depth)
+- Positive integer: Stop exploring at that depth level
+- When limited, adds `simplified_depth: N` to page frontmatter
+
+**Examples**:
+```bash
+# Limit to 3 levels of nesting
+NTN_BLOCK_DEPTH=3 ./ntnsync sync
+
+# Fast sync with shallow block fetching
+NTN_BLOCK_DEPTH=2 ./ntnsync sync --max-pages 100
+```
+
 ## Commit/Push Environment Variables
 
 Git commit and push behavior is controlled via environment variables:
@@ -71,34 +93,30 @@ NTN_COMMIT=true NTN_PUSH=false ./ntnsync sync
 NTN_COMMIT_PERIOD=1m ./ntnsync sync
 ```
 
-## Commands
+## Root Page Configuration
 
-### add
+Root pages are configured in `root.md` at the repository root. This file uses a task list format with interactive checkboxes:
 
-Add a root page to a folder.
+```markdown
+# Root Pages
 
-```bash
-ntnsync add <page_id_or_url> [--folder FOLDER] [--force-update]
+- [x] **tech**: https://notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d
+- [x] **product**: https://notion.so/Product-Specs-abc123def456
+- [ ] **archive**: https://notion.so/Old-Docs-disabled123
 ```
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--folder`, `-f` | `default` | Target folder name |
-| `--force-update` | false | Force re-download even if exists |
+**Entry format**: `- [x] **folder**: url`
+- Checkbox (`[x]` enabled, `[ ]` disabled) - clickable in GitHub
+- `**folder**`: Target folder name for the root page and its children
+- `url`: Notion page or database URL
 
 **Behavior**:
-- Downloads page to `$folder/$title.md`
-- Sets `is_root: true` in registry
-- Queues child pages for recursive sync
-- Accepts Notion URLs or raw page IDs
-- Auto-detects and handles databases
+- On every command (pull, sync, list, status), `root.md` is reconciled with registries
+- Disabled roots (`[ ]`) are skipped during pull and sync
+- Duplicate page IDs are automatically removed
+- File is created with template if it doesn't exist
 
-**Examples**:
-```bash
-ntnsync add https://www.notion.so/Wiki-2c536f5e48f44234ad8d73a1a148e95d --folder tech
-ntnsync add 2c536f5e48f44234ad8d73a1a148e95d -f product
-ntnsync add https://www.notion.so/My-Database --force-update
-```
+## Commands
 
 ### get
 
@@ -248,6 +266,36 @@ ntnsync status [--folder FOLDER]
 - Queue statistics (pending pages by type and folder)
 - Queue file details
 
+### cleanup
+
+Delete orphaned pages not tracing to root.md.
+
+```bash
+ntnsync cleanup [--dry-run]
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dry-run` | false | Preview only, don't delete anything |
+
+**Behavior**:
+- Reconciles root.md first
+- Lists all page registries
+- Traces each page to its root
+- Deletes pages whose root is not in root.md
+- Removes both markdown files and registry files
+
+**Use cases**:
+- Clean up after removing entries from root.md
+- Remove orphaned pages from reorganization
+- Prune pages from deleted root hierarchies
+
+**Examples**:
+```bash
+ntnsync cleanup --dry-run    # Preview what would be deleted
+ntnsync cleanup              # Delete orphaned pages
+```
+
 ### reindex
 
 Rebuild registry files from markdown files.
@@ -274,16 +322,111 @@ ntnsync reindex [--dry-run]
 - Clean up duplicate pages
 - Rebuild after manual file edits
 
+### remote
+
+Manage remote git repository configuration.
+
+```bash
+ntnsync remote show
+ntnsync remote test
+```
+
+**Subcommands**:
+
+| Subcommand | Description |
+|------------|-------------|
+| `show` | Display current remote configuration from environment variables |
+| `test` | Test connection to remote repository |
+
+**Environment Variables**:
+
+| Variable | Description |
+|----------|-------------|
+| `NTN_GIT_URL` | Remote git repository URL (HTTPS or SSH) |
+| `NTN_GIT_PASS` | Git password/token for HTTPS authentication |
+| `NTN_GIT_BRANCH` | Branch name (default: `main`) |
+| `NTN_GIT_USER` | Git commit author name (default: `ntnsync`) |
+| `NTN_GIT_EMAIL` | Git commit author email (default: `ntnsync@localhost`) |
+| `NTN_STORAGE` | Storage mode: `local` or `remote` (auto-detected from `NTN_GIT_URL`) |
+
+**Examples**:
+```bash
+# Show current configuration
+ntnsync remote show
+
+# Test connection to remote
+NTN_GIT_URL=https://github.com/user/docs.git NTN_GIT_PASS=$TOKEN ntnsync remote test
+```
+
+### serve
+
+Start a webhook server to receive Notion events for real-time sync.
+
+```bash
+ntnsync serve [options]
+```
+
+| Flag | Env Var | Default | Description |
+|------|---------|---------|-------------|
+| `--port`, `-p` | `NTN_WEBHOOK_PORT` | `8080` | HTTP port to listen on |
+| `--secret` | `NTN_WEBHOOK_SECRET` | | Webhook secret for signature verification |
+| `--path` | `NTN_WEBHOOK_PATH` | `/webhooks/notion` | Webhook endpoint path |
+| `--auto-sync` | `NTN_WEBHOOK_AUTO_SYNC` | `true` | Automatically sync after receiving events |
+| `--sync-delay` | `NTN_WEBHOOK_SYNC_DELAY` | `0` | Debounce delay before processing (e.g., `5s`) |
+
+**Behavior**:
+- Listens for Notion webhook events
+- Queues changed pages when events arrive
+- Automatically triggers sync if `--auto-sync` is enabled
+- Verifies webhook signatures when `--secret` is configured
+- Uses debouncing with `--sync-delay` to batch rapid changes
+
+**Security**:
+- Always configure `--secret` in production for signature verification
+- Without a secret, any request can trigger syncs
+
+**Examples**:
+```bash
+# Start webhook server on port 8080
+ntnsync serve
+
+# With signature verification and custom port
+ntnsync serve --port 3000 --secret $WEBHOOK_SECRET
+
+# With debounce delay for batching changes
+ntnsync serve --sync-delay 10s
+
+# Disable auto-sync (queue only)
+ntnsync serve --auto-sync=false
+```
+
+## Webhook Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `NTN_WEBHOOK_PORT` | `8080` | HTTP port for webhook server |
+| `NTN_WEBHOOK_SECRET` | | Secret for signature verification |
+| `NTN_WEBHOOK_PATH` | `/webhooks/notion` | Webhook endpoint path |
+| `NTN_WEBHOOK_AUTO_SYNC` | `true` | Auto-sync after receiving events |
+| `NTN_WEBHOOK_SYNC_DELAY` | `0` | Debounce delay before processing |
+
 ## Typical Workflows
 
 ### First-time sync
 
 ```bash
-# 1. Add a root page
-ntnsync add https://www.notion.so/Wiki-2c536f5e... --folder tech
+# 1. Create root.md with your root pages
+cat > root.md << 'EOF'
+# Root Pages
 
-# 2. Sync the queue (with commit)
-NTN_COMMIT=true ntnsync sync --folder tech
+- [x] **tech**: https://www.notion.so/Wiki-2c536f5e...
+EOF
+
+# 2. Pull to queue all pages (use --since for first pull)
+ntnsync pull --since 30d
+
+# 3. Sync the queue (with commit)
+NTN_COMMIT=true ntnsync sync
 ```
 
 ### Incremental updates
@@ -318,3 +461,19 @@ export NTN_GIT_PASS=$GITHUB_TOKEN
 ntnsync pull --since 2h
 ntnsync sync
 ```
+
+### Real-time sync with webhooks
+
+```bash
+# Set up environment
+export NOTION_TOKEN=secret_xxx
+export NTN_COMMIT=true
+export NTN_GIT_URL=https://github.com/user/docs.git
+export NTN_GIT_PASS=$GITHUB_TOKEN
+export NTN_WEBHOOK_SECRET=$WEBHOOK_SECRET
+
+# Start webhook server
+ntnsync serve --port 8080 --sync-delay 5s
+```
+
+Configure your Notion integration to send webhooks to `https://your-server:8080/webhooks/notion`.
