@@ -609,7 +609,9 @@ func (c *Crawler) processPage(
 	// This prevents saving pages from webhooks that don't belong to any root.md entry.
 	existingReg, _ := c.loadPageRegistry(ctx, pageID)
 	if existingReg == nil {
-		_, detectedFolder, foundRoot, err := c.traceParentChain(ctx, page, folder)
+		var detectedFolder string
+		var foundRoot bool
+		_, detectedFolder, foundRoot, err = c.traceParentChain(ctx, page, folder)
 		if err != nil {
 			c.logger.WarnContext(ctx, "failed to trace parent chain for new page",
 				"page_id", pageID,
@@ -846,7 +848,9 @@ func (c *Crawler) processDatabase(
 			ID:     database.ID,
 			Parent: database.Parent,
 		}
-		_, detectedFolder, foundRoot, err := c.traceParentChain(ctx, dbAsPage, folder)
+		var detectedFolder string
+		var foundRoot bool
+		_, detectedFolder, foundRoot, err = c.traceParentChain(ctx, dbAsPage, folder)
 		if err != nil {
 			c.logger.WarnContext(ctx, "failed to trace parent chain for new database",
 				"database_id", databaseID,
