@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/fclairamb/ntnsync/internal/apperrors"
 	"github.com/fclairamb/ntnsync/internal/notion"
+	"github.com/fclairamb/ntnsync/internal/queue"
 )
 
 const (
@@ -141,7 +143,8 @@ func formatRootMd(manifest *RootManifest) string {
 // ReconcileRootMd syncs root.md with registries on startup.
 // - Creates empty root.md if it doesn't exist
 // - Removes duplicates (by page ID)
-// - Creates/updates registries to match root.md.
+// - Creates/updates registries to match root.md
+// - Queues enabled root pages that haven't been synced yet.
 func (c *Crawler) ReconcileRootMd(ctx context.Context) error {
 	// Ensure transaction is available
 	if err := c.EnsureTransaction(ctx); err != nil {
@@ -162,10 +165,35 @@ func (c *Crawler) ReconcileRootMd(ctx context.Context) error {
 		return nil
 	}
 
-	// Track seen page IDs to detect duplicates
+	cleaned, pagesToQueue, hasDuplicates := c.processRootEntries(ctx, manifest)
+
+	// Rewrite root.md if duplicates were removed
+	if hasDuplicates {
+		c.logger.InfoContext(ctx, "rewriting root.md to remove duplicates")
+		if err := c.WriteRootMd(ctx, &RootManifest{Entries: cleaned}); err != nil {
+			return fmt.Errorf("rewrite root.md: %w", err)
+		}
+	}
+
+	// Queue enabled root pages that need initial sync
+	queuedCount := c.queueRootPages(ctx, pagesToQueue)
+
+	c.logger.InfoContext(ctx, "root.md reconciliation complete",
+		"entries", len(cleaned),
+		"queued_for_sync", queuedCount)
+
+	return nil
+}
+
+// processRootEntries processes root.md entries, creating/updating registries.
+// Returns cleaned entries, pages to queue, and whether duplicates were found.
+func (c *Crawler) processRootEntries(
+	ctx context.Context, manifest *RootManifest,
+) ([]RootEntry, map[string][]queue.Page, bool) {
 	seenIDs := make(map[string]bool)
 	var cleaned []RootEntry
 	hasDuplicates := false
+	pagesToQueue := make(map[string][]queue.Page)
 
 	for i := range manifest.Entries {
 		entry := &manifest.Entries[i]
@@ -180,43 +208,74 @@ func (c *Crawler) ReconcileRootMd(ctx context.Context) error {
 		seenIDs[entry.PageID] = true
 		cleaned = append(cleaned, *entry)
 
-		// Load or create registry
-		reg, _ := c.loadPageRegistry(ctx, entry.PageID)
-		if reg == nil {
-			// Create new registry with minimal info
-			reg = &PageRegistry{
-				ID:      entry.PageID,
-				Folder:  entry.Folder,
-				IsRoot:  true,
-				Enabled: entry.Enabled,
-			}
-			c.logger.InfoContext(ctx, "creating registry for root page",
-				"page_id", entry.PageID,
-				"folder", entry.Folder,
-				"enabled", entry.Enabled)
-		} else {
-			// Update existing registry
-			reg.IsRoot = true
-			reg.Enabled = entry.Enabled
-			reg.Folder = entry.Folder
-		}
+		needsSync := c.reconcileRootEntry(ctx, entry)
 
-		if err := c.savePageRegistry(ctx, reg); err != nil {
-			c.logger.WarnContext(ctx, "failed to save registry", "page_id", entry.PageID, "error", err)
+		// Queue enabled root pages that need syncing
+		if entry.Enabled && needsSync {
+			pagesToQueue[entry.Folder] = append(pagesToQueue[entry.Folder], queue.Page{
+				ID:         entry.PageID,
+				LastEdited: time.Now(),
+			})
 		}
 	}
 
-	// Rewrite root.md if duplicates were removed
-	if hasDuplicates {
-		c.logger.InfoContext(ctx, "rewriting root.md to remove duplicates")
-		if err := c.WriteRootMd(ctx, &RootManifest{Entries: cleaned}); err != nil {
-			return fmt.Errorf("rewrite root.md: %w", err)
+	return cleaned, pagesToQueue, hasDuplicates
+}
+
+// reconcileRootEntry creates or updates a registry for a root entry.
+// Returns true if the page needs to be synced.
+func (c *Crawler) reconcileRootEntry(ctx context.Context, entry *RootEntry) bool {
+	reg, _ := c.loadPageRegistry(ctx, entry.PageID)
+	var needsSync bool
+
+	if reg == nil {
+		reg = &PageRegistry{
+			ID:      entry.PageID,
+			Folder:  entry.Folder,
+			IsRoot:  true,
+			Enabled: entry.Enabled,
 		}
+		c.logger.InfoContext(ctx, "creating registry for root page",
+			"page_id", entry.PageID,
+			"folder", entry.Folder,
+			"enabled", entry.Enabled)
+		needsSync = true
+	} else {
+		reg.IsRoot = true
+		reg.Enabled = entry.Enabled
+		reg.Folder = entry.Folder
+		needsSync = reg.LastSynced.IsZero()
 	}
 
-	c.logger.InfoContext(ctx, "root.md reconciliation complete", "entries", len(cleaned))
+	if err := c.savePageRegistry(ctx, reg); err != nil {
+		c.logger.WarnContext(ctx, "failed to save registry", "page_id", entry.PageID, "error", err)
+	}
 
-	return nil
+	return needsSync
+}
+
+// queueRootPages queues root pages for initial sync and returns count of queued pages.
+func (c *Crawler) queueRootPages(ctx context.Context, pagesToQueue map[string][]queue.Page) int {
+	queuedCount := 0
+	for folder, pages := range pagesToQueue {
+		entry := queue.Entry{
+			Type:      queueTypeInit,
+			Folder:    folder,
+			Pages:     pages,
+			CreatedAt: time.Now(),
+		}
+		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
+			c.logger.WarnContext(ctx, "failed to queue root pages",
+				"folder", folder,
+				"error", err)
+			continue
+		}
+		queuedCount += len(pages)
+		c.logger.InfoContext(ctx, "queued root pages for initial sync",
+			"folder", folder,
+			"count", len(pages))
+	}
+	return queuedCount
 }
 
 // isRootEnabled traces ancestry to find root, checks if enabled.
