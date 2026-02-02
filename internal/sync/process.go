@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/ntnsync/internal/converter"
+	"github.com/fclairamb/ntnsync/internal/notion"
 	"github.com/fclairamb/ntnsync/internal/queue"
 	"github.com/fclairamb/ntnsync/internal/version"
 )
@@ -604,6 +605,35 @@ func (c *Crawler) processPage(
 	}
 	c.logger.DebugContext(ctx, "fetched page metadata", "page_id", pageID, "duration_ms", fetchPageDuration.Milliseconds())
 
+	// For new pages (not in registry), verify they belong to an enabled root before processing.
+	// This prevents saving pages from webhooks that don't belong to any root.md entry.
+	existingReg, _ := c.loadPageRegistry(ctx, pageID)
+	if existingReg == nil {
+		var detectedFolder string
+		var foundRoot bool
+		_, detectedFolder, foundRoot, err = c.traceParentChain(ctx, page, folder)
+		if err != nil {
+			c.logger.WarnContext(ctx, "failed to trace parent chain for new page",
+				"page_id", pageID,
+				"error", err)
+			return 0, nil
+		}
+		if !foundRoot {
+			c.logger.InfoContext(ctx, "skipping page not under any root in root.md",
+				"page_id", pageID,
+				"title", page.Title())
+			return 0, nil
+		}
+		// Update folder from parent chain if different from default
+		if folder != detectedFolder {
+			c.logger.DebugContext(ctx, "using folder from parent chain",
+				"page_id", pageID,
+				"requested_folder", folder,
+				"detected_folder", detectedFolder)
+			folder = detectedFolder
+		}
+	}
+
 	// Fetch blocks with optional depth limit
 	fetchBlocksStart := time.Now()
 	maxDepth := getBlockDepthLimit()
@@ -808,6 +838,40 @@ func (c *Crawler) processDatabase(
 	c.logger.DebugContext(ctx, "fetched database metadata",
 		"database_id", databaseID,
 		"duration_ms", fetchDBDuration.Milliseconds())
+
+	// For new databases (not in registry), verify they belong to an enabled root before processing.
+	// This prevents saving databases from webhooks that don't belong to any root.md entry.
+	existingReg, _ := c.loadPageRegistry(ctx, databaseID)
+	if existingReg == nil {
+		// Convert database to a page-like object for parent chain tracing
+		dbAsPage := &notion.Page{
+			ID:     database.ID,
+			Parent: database.Parent,
+		}
+		var detectedFolder string
+		var foundRoot bool
+		_, detectedFolder, foundRoot, err = c.traceParentChain(ctx, dbAsPage, folder)
+		if err != nil {
+			c.logger.WarnContext(ctx, "failed to trace parent chain for new database",
+				"database_id", databaseID,
+				"error", err)
+			return 0, nil
+		}
+		if !foundRoot {
+			c.logger.InfoContext(ctx, "skipping database not under any root in root.md",
+				"database_id", databaseID,
+				"title", database.Title)
+			return 0, nil
+		}
+		// Update folder from parent chain if different from default
+		if folder != detectedFolder {
+			c.logger.DebugContext(ctx, "using folder from parent chain",
+				"database_id", databaseID,
+				"requested_folder", folder,
+				"detected_folder", detectedFolder)
+			folder = detectedFolder
+		}
+	}
 
 	// Query all pages in the database
 	queryDBStart := time.Now()
