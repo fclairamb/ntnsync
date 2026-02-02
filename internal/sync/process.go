@@ -645,6 +645,9 @@ func (c *Crawler) processPage(
 	}
 	c.logger.DebugContext(ctx, "fetched page metadata", "page_id", pageID, "duration_ms", fetchPageDuration.Milliseconds())
 
+	// Enrich user data for created_by and last_edited_by
+	c.enrichPageUsers(ctx, page)
+
 	// For new pages (not in registry), verify they belong to an enabled root before processing.
 	// This prevents saving pages from webhooks that don't belong to any root.md entry.
 	existingReg, _ := c.loadPageRegistry(ctx, pageID)
@@ -857,6 +860,9 @@ func (c *Crawler) processDatabase(
 	c.logger.DebugContext(ctx, "fetched database metadata",
 		"database_id", databaseID,
 		"duration_ms", fetchDBDuration.Milliseconds())
+
+	// Enrich user data for created_by and last_edited_by
+	c.enrichDatabaseUsers(ctx, database)
 
 	// For new databases (not in registry), verify they belong to an enabled root before processing.
 	// This prevents saving databases from webhooks that don't belong to any root.md entry.
