@@ -411,6 +411,46 @@ type parentResolutionResult struct {
 	filesWritten int
 }
 
+// blockParentResult holds the result of block parent resolution.
+type blockParentResult struct {
+	parentID string
+	isRoot   bool
+}
+
+// resolveBlockParentWithLogging resolves a block parent to its containing page/workspace,
+// with appropriate logging. Returns (parentID, isRoot).
+func (c *Crawler) resolveBlockParentWithLogging(
+	ctx context.Context, itemID, itemType, blockID string, parent notion.Parent,
+) blockParentResult {
+	if parent.Type != parentTypeBlockID {
+		return blockParentResult{parentID: normalizePageID(parent.ID())}
+	}
+
+	c.logger.DebugContext(ctx, "parent is a block, resolving to containing page",
+		itemType, itemID,
+		"block_id", blockID)
+
+	resolvedID, resolvedType, resolveErr := c.resolveBlockToPage(ctx, blockID)
+	switch {
+	case resolveErr != nil:
+		c.logger.WarnContext(ctx, "failed to resolve block parent, treating as root",
+			itemType, itemID,
+			"block_id", blockID,
+			"error", resolveErr)
+		return blockParentResult{isRoot: true}
+	case resolvedType == parentTypeWorkspace:
+		c.logger.DebugContext(ctx, "block parent resolves to workspace, treating as root",
+			itemType, itemID)
+		return blockParentResult{isRoot: true}
+	default:
+		c.logger.InfoContext(ctx, "resolved block parent to page",
+			itemType, itemID,
+			"block_id", blockID,
+			"resolved_parent_id", resolvedID)
+		return blockParentResult{parentID: resolvedID}
+	}
+}
+
 // resolveAndFetchParent resolves and fetches the parent page if needed.
 // It handles the logic of checking expected parent, looking up registry, fetching recursively,
 // and resolving block parents to their containing pages.
@@ -653,38 +693,10 @@ func (c *Crawler) processPage(
 	}
 	c.logger.DebugContext(ctx, "fetched page blocks", logArgs...)
 
-	// Determine if this is a root page (check parent)
-	isRoot := false
-	parentID := ""
-
-	// Pages can have a page, database, or block as parent
-	// If parent is a block (e.g., toggle, synced block, column), resolve to containing page
-	if page.Parent.Type == parentTypeBlockID {
-		c.logger.DebugContext(ctx, "page parent is a block, resolving to containing page",
-			"page_id", pageID,
-			"block_id", page.Parent.BlockID)
-		resolvedID, resolvedType, resolveErr := c.resolveBlockToPage(ctx, page.Parent.BlockID)
-		switch {
-		case resolveErr != nil:
-			c.logger.WarnContext(ctx, "failed to resolve block parent, treating as root",
-				"page_id", pageID,
-				"block_id", page.Parent.BlockID,
-				"error", resolveErr)
-			isRoot = true
-		case resolvedType == parentTypeWorkspace:
-			c.logger.DebugContext(ctx, "block parent resolves to workspace, treating as root",
-				"page_id", pageID)
-			isRoot = true
-		default:
-			parentID = resolvedID
-			c.logger.InfoContext(ctx, "resolved block parent to page",
-				"page_id", pageID,
-				"block_id", page.Parent.BlockID,
-				"resolved_parent_id", parentID)
-		}
-	} else {
-		parentID = normalizePageID(page.Parent.ID())
-	}
+	// Determine parent (resolving block parent if needed)
+	blockRes := c.resolveBlockParentWithLogging(ctx, pageID, "page_id", page.Parent.BlockID, page.Parent)
+	parentID := blockRes.parentID
+	isRoot := blockRes.isRoot
 
 	// Resolve and fetch parent if needed
 	parentResult, err := c.resolveAndFetchParent(
@@ -892,38 +904,10 @@ func (c *Crawler) processDatabase(
 		"page_count", len(dbPages),
 		"duration_ms", queryDBDuration.Milliseconds())
 
-	// Determine if this is a root database (check parent)
-	isRoot := false
-	parentID := ""
-
-	// Databases can have a page, database, or block as parent
-	// If parent is a block (e.g., toggle, synced block, column), resolve to containing page
-	if database.Parent.Type == parentTypeBlockID {
-		c.logger.DebugContext(ctx, "database parent is a block, resolving to containing page",
-			"database_id", databaseID,
-			"block_id", database.Parent.BlockID)
-		resolvedID, resolvedType, resolveErr := c.resolveBlockToPage(ctx, database.Parent.BlockID)
-		switch {
-		case resolveErr != nil:
-			c.logger.WarnContext(ctx, "failed to resolve block parent, treating as root",
-				"database_id", databaseID,
-				"block_id", database.Parent.BlockID,
-				"error", resolveErr)
-			isRoot = true
-		case resolvedType == parentTypeWorkspace:
-			c.logger.DebugContext(ctx, "block parent resolves to workspace, treating as root",
-				"database_id", databaseID)
-			isRoot = true
-		default:
-			parentID = resolvedID
-			c.logger.InfoContext(ctx, "resolved block parent to page",
-				"database_id", databaseID,
-				"block_id", database.Parent.BlockID,
-				"resolved_parent_id", parentID)
-		}
-	} else {
-		parentID = normalizePageID(database.Parent.ID())
-	}
+	// Determine parent (resolving block parent if needed)
+	blockRes := c.resolveBlockParentWithLogging(ctx, databaseID, "database_id", database.Parent.BlockID, database.Parent)
+	parentID := blockRes.parentID
+	isRoot := blockRes.isRoot
 
 	// Resolve and fetch parent if needed
 	parentResult, err := c.resolveAndFetchParent(
