@@ -657,7 +657,7 @@ func (s *LocalStore) initRepoWithRemote(path string) (*git.Repository, error) {
 	}
 
 	// Set the default branch to the configured branch
-	if err := s.setDefaultBranch(repo); err != nil {
+	if err = s.setDefaultBranch(repo); err != nil {
 		return nil, err
 	}
 
