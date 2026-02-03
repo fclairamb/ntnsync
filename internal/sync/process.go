@@ -757,6 +757,12 @@ func (c *Crawler) processPage(
 	// Discover child pages
 	children := c.findChildPages(blocks)
 
+	// Preserve IsRoot and Enabled from existing registry (set by ReconcileRootMd)
+	if existingReg != nil && existingReg.IsRoot {
+		isRoot = true
+		enabled = existingReg.Enabled
+	}
+
 	// Save page registry
 	if err := c.savePageRegistry(ctx, &PageRegistry{
 		NtnsyncVersion: version.Version,
@@ -768,6 +774,7 @@ func (c *Crawler) processPage(
 		LastEdited:     page.LastEditedTime,
 		LastSynced:     now,
 		IsRoot:         isRoot,
+		Enabled:        enabled,
 		ParentID:       parentID,
 		Children:       children,
 		ContentHash:    contentHash,
@@ -995,6 +1002,12 @@ func (c *Crawler) processDatabase(
 		children = append(children, childID)
 	}
 
+	// Preserve IsRoot and Enabled from existing registry (set by ReconcileRootMd)
+	if existingReg != nil && existingReg.IsRoot {
+		isRoot = true
+		enabled = existingReg.Enabled
+	}
+
 	// Save page registry (treat database as a page in registry)
 	if err := c.savePageRegistry(ctx, &PageRegistry{
 		NtnsyncVersion: version.Version,
@@ -1006,6 +1019,7 @@ func (c *Crawler) processDatabase(
 		LastEdited:     database.LastEditedTime,
 		LastSynced:     now,
 		IsRoot:         isRoot,
+		Enabled:        enabled,
 		ParentID:       parentID,
 		Children:       children,
 		ContentHash:    contentHash,
