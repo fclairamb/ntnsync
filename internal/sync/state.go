@@ -75,6 +75,17 @@ type FileRegistry struct {
 	LastSynced     time.Time `json:"last_synced"`
 }
 
+// UserRegistry is stored in .notion-sync/ids/user-{id}.json
+// Contains cached user information to avoid repeated API calls.
+type UserRegistry struct {
+	NtnsyncVersion string    `json:"ntnsync_version"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Type           string    `json:"type,omitempty"`
+	Email          string    `json:"email,omitempty"`
+	LastFetched    time.Time `json:"last_fetched"`
+}
+
 // FileManifest is stored alongside downloaded files as {filename}.meta.json
 // Contains metadata for local file identification.
 type FileManifest struct {

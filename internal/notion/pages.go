@@ -33,6 +33,7 @@ func (c *Client) GetPage(ctx context.Context, pageID string) (*Page, error) {
 	if err := c.do(ctx, "GET", path, nil, &page); err != nil {
 		return nil, fmt.Errorf("get page %s: %w", pageID, err)
 	}
+
 	c.logger.DebugContext(ctx, "Page fetched", "duration_ms", time.Since(before).Milliseconds())
 	return &page, nil
 }
@@ -349,6 +350,21 @@ func (c *Client) GetMe(ctx context.Context) (*Bot, error) {
 		return nil, fmt.Errorf("get me: %w", err)
 	}
 	return &bot, nil
+}
+
+// GetUser retrieves user information by ID.
+func (c *Client) GetUser(ctx context.Context, userID string) (*User, error) {
+	if userID == "" {
+		return nil, apperrors.ErrEmptyInput
+	}
+
+	var user User
+	path := "/users/" + userID
+	if err := c.do(ctx, "GET", path, nil, &user); err != nil {
+		return nil, fmt.Errorf("get user %s: %w", userID, err)
+	}
+
+	return &user, nil
 }
 
 // NormalizeID removes dashes from a Notion ID.
