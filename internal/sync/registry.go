@@ -12,37 +12,30 @@ import (
 	"github.com/fclairamb/ntnsync/internal/version"
 )
 
-// savePageRegistry saves a page registry file.
-func (c *Crawler) savePageRegistry(ctx context.Context, reg *PageRegistry) error {
-	data, err := json.MarshalIndent(reg, "", "  ")
+// saveRegistry saves a registry file with the given prefix and ID.
+func saveRegistry[T any](c *Crawler, ctx context.Context, prefix, id string, data *T) error {
+	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal registry: %w", err)
 	}
 
-	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("page-%s.json", reg.ID))
-	if err := c.tx.Write(ctx, path, data); err != nil {
+	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("%s-%s.json", prefix, id))
+	if err := c.tx.Write(ctx, path, jsonData); err != nil {
 		return fmt.Errorf("write registry: %w", err)
 	}
 
 	return nil
 }
 
-// loadPageRegistry loads a page registry file.
-// Tries page-{id}.json format first, falls back to old format ({id}.json) for backward compatibility.
-func (c *Crawler) loadPageRegistry(ctx context.Context, pageID string) (*PageRegistry, error) {
-	// Try page- prefix format first
-	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("page-%s.json", pageID))
+// loadRegistry loads a registry file with the given prefix and ID.
+func loadRegistry[T any](c *Crawler, ctx context.Context, prefix, id string) (*T, error) {
+	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("%s-%s.json", prefix, id))
 	data, err := c.store.Read(ctx, path)
 	if err != nil {
-		// Fall back to old format for backward compatibility
-		oldPath := filepath.Join(stateDir, idsDir, pageID+".json")
-		data, err = c.store.Read(ctx, oldPath)
-		if err != nil {
-			return nil, fmt.Errorf("read registry: %w", err)
-		}
+		return nil, fmt.Errorf("read registry: %w", err)
 	}
 
-	var reg PageRegistry
+	var reg T
 	if err := json.Unmarshal(data, &reg); err != nil {
 		return nil, fmt.Errorf("unmarshal registry: %w", err)
 	}
@@ -50,66 +43,52 @@ func (c *Crawler) loadPageRegistry(ctx context.Context, pageID string) (*PageReg
 	return &reg, nil
 }
 
+// savePageRegistry saves a page registry file.
+func (c *Crawler) savePageRegistry(ctx context.Context, reg *PageRegistry) error {
+	return saveRegistry(c, ctx, "page", reg.ID, reg)
+}
+
+// loadPageRegistry loads a page registry file.
+// Tries page-{id}.json format first, falls back to old format ({id}.json) for backward compatibility.
+func (c *Crawler) loadPageRegistry(ctx context.Context, pageID string) (*PageRegistry, error) {
+	reg, err := loadRegistry[PageRegistry](c, ctx, "page", pageID)
+	if err != nil {
+		// Fall back to old format for backward compatibility
+		oldPath := filepath.Join(stateDir, idsDir, pageID+".json")
+		data, readErr := c.store.Read(ctx, oldPath)
+		if readErr != nil {
+			return nil, fmt.Errorf("read registry: %w", readErr)
+		}
+
+		var oldReg PageRegistry
+		if unmarshalErr := json.Unmarshal(data, &oldReg); unmarshalErr != nil {
+			return nil, fmt.Errorf("unmarshal registry: %w", unmarshalErr)
+		}
+
+		return &oldReg, nil
+	}
+
+	return reg, nil
+}
+
 // saveFileRegistry saves a file registry to disk.
 func (c *Crawler) saveFileRegistry(ctx context.Context, reg *FileRegistry) error {
-	data, err := json.MarshalIndent(reg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal file registry: %w", err)
-	}
-
-	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("file-%s.json", reg.ID))
-	if err := c.tx.Write(ctx, path, data); err != nil {
-		return fmt.Errorf("write file registry: %w", err)
-	}
-
-	return nil
+	return saveRegistry(c, ctx, "file", reg.ID, reg)
 }
 
 // loadFileRegistry loads a file registry by ID.
 func (c *Crawler) loadFileRegistry(ctx context.Context, fileID string) (*FileRegistry, error) {
-	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("file-%s.json", fileID))
-	data, err := c.store.Read(ctx, path)
-	if err != nil {
-		return nil, fmt.Errorf("read file registry: %w", err)
-	}
-
-	var reg FileRegistry
-	if err := json.Unmarshal(data, &reg); err != nil {
-		return nil, fmt.Errorf("unmarshal file registry: %w", err)
-	}
-
-	return &reg, nil
+	return loadRegistry[FileRegistry](c, ctx, "file", fileID)
 }
 
 // saveUserRegistry saves a user registry file.
 func (c *Crawler) saveUserRegistry(ctx context.Context, reg *UserRegistry) error {
-	data, err := json.MarshalIndent(reg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal user registry: %w", err)
-	}
-
-	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("user-%s.json", reg.ID))
-	if err := c.tx.Write(ctx, path, data); err != nil {
-		return fmt.Errorf("write user registry: %w", err)
-	}
-
-	return nil
+	return saveRegistry(c, ctx, "user", reg.ID, reg)
 }
 
 // loadUserRegistry loads a user registry file.
 func (c *Crawler) loadUserRegistry(ctx context.Context, userID string) (*UserRegistry, error) {
-	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("user-%s.json", userID))
-	data, err := c.store.Read(ctx, path)
-	if err != nil {
-		return nil, fmt.Errorf("read user registry: %w", err)
-	}
-
-	var reg UserRegistry
-	if err := json.Unmarshal(data, &reg); err != nil {
-		return nil, fmt.Errorf("unmarshal user registry: %w", err)
-	}
-
-	return &reg, nil
+	return loadRegistry[UserRegistry](c, ctx, "user", userID)
 }
 
 // enrichUser resolves a user's name by checking the local registry first,
@@ -158,22 +137,10 @@ func (c *Crawler) enrichUser(ctx context.Context, user *notion.User) {
 	}
 }
 
-// enrichPageUsers enriches CreatedBy and LastEditedBy on a page.
-func (c *Crawler) enrichPageUsers(ctx context.Context, page *notion.Page) {
-	if page == nil {
-		return
-	}
-	c.enrichUser(ctx, &page.CreatedBy)
-	c.enrichUser(ctx, &page.LastEditedBy)
-}
-
-// enrichDatabaseUsers enriches CreatedBy and LastEditedBy on a database.
-func (c *Crawler) enrichDatabaseUsers(ctx context.Context, db *notion.Database) {
-	if db == nil {
-		return
-	}
-	c.enrichUser(ctx, &db.CreatedBy)
-	c.enrichUser(ctx, &db.LastEditedBy)
+// enrichUsers enriches CreatedBy and LastEditedBy user fields.
+func (c *Crawler) enrichUsers(ctx context.Context, createdBy, lastEditedBy *notion.User) {
+	c.enrichUser(ctx, createdBy)
+	c.enrichUser(ctx, lastEditedBy)
 }
 
 // listPageRegistries lists all page registries.
