@@ -322,9 +322,11 @@ func (s *LocalStore) Push(ctx context.Context) error {
 func (s *LocalStore) pushLocked(ctx context.Context, auth transport.AuthMethod) error {
 	s.logger.InfoContext(ctx, "pushing to remote", "url", s.remoteConfig.URL, "branch", s.remoteConfig.Branch)
 
+	refSpec := config.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", s.remoteConfig.Branch, s.remoteConfig.Branch))
 	err := s.repo.PushContext(ctx, &git.PushOptions{
 		RemoteName: "origin",
 		Auth:       auth,
+		RefSpecs:   []config.RefSpec{refSpec},
 	})
 	if err != nil {
 		if errors.Is(err, git.NoErrAlreadyUpToDate) {
@@ -654,6 +656,11 @@ func (s *LocalStore) initRepoWithRemote(path string) (*git.Repository, error) {
 		return nil, fmt.Errorf("init git repo: %w", err)
 	}
 
+	// Set the default branch to the configured branch
+	if err = s.setDefaultBranch(repo); err != nil {
+		return nil, err
+	}
+
 	_, err = repo.CreateRemote(&config.RemoteConfig{
 		Name: "origin",
 		URLs: []string{s.remoteConfig.URL},
@@ -693,6 +700,11 @@ func (s *LocalStore) initNewRepo(path string) (*git.Repository, error) {
 		return nil, fmt.Errorf("init git repo: %w", err)
 	}
 
+	// Set the default branch to the configured branch
+	if err := s.setDefaultBranch(repo); err != nil {
+		return nil, err
+	}
+
 	// If remote is configured, add it to the new repo
 	if s.remoteConfig.IsEnabled() {
 		if err := s.addRemoteToRepo(repo); err != nil {
@@ -701,6 +713,20 @@ func (s *LocalStore) initNewRepo(path string) (*git.Repository, error) {
 	}
 
 	return repo, nil
+}
+
+// setDefaultBranch sets HEAD to point to the configured branch.
+// This ensures the repo uses the correct branch name (e.g., "main" instead of "master").
+func (s *LocalStore) setDefaultBranch(repo *git.Repository) error {
+	branch := "main"
+	if s.remoteConfig != nil && s.remoteConfig.Branch != "" {
+		branch = s.remoteConfig.Branch
+	}
+	headRef := plumbing.NewSymbolicReference(plumbing.HEAD, plumbing.NewBranchReferenceName(branch))
+	if err := repo.Storer.SetReference(headRef); err != nil {
+		return fmt.Errorf("set default branch to %s: %w", branch, err)
+	}
+	return nil
 }
 
 // ensureRemoteConfigured ensures the remote is configured in an existing repository.
