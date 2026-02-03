@@ -626,7 +626,7 @@ type writeAndRegisterParams struct {
 }
 
 // writeAndRegister handles parent resolution, file path computation, conversion, writing,
-// registry saving, and child queuing. Shared by processPage and processDatabase.
+// registry saving, and child queuing. Used by processPage for both pages and databases.
 //
 //nolint:funlen // Shared logic for page/database processing
 func (c *Crawler) writeAndRegister(
@@ -767,8 +767,6 @@ func (c *Crawler) verifyNewItemRoot(
 // processPage fetches and saves a single page or database.
 // expectedParentID is an optional hint from the queue entry about the expected parent.
 // Returns (filesWritten, error).
-//
-//nolint:funlen // Complex page processing with child queuing
 func (c *Crawler) processPage(
 	ctx context.Context, pageID, folder string, isInit bool, expectedParentID string,
 ) (int, error) {
@@ -779,50 +777,72 @@ func (c *Crawler) processPage(
 		"is_init", isInit,
 		"expected_parent_id", expectedParentID)
 
-	// Check if this page's root is enabled
+	// Check if this item's root is enabled
 	enabled, rootID, err := c.isRootEnabled(ctx, pageID)
 	if err == nil && !enabled && rootID != "" {
-		c.logger.InfoContext(ctx, "skipping page with disabled root",
+		c.logger.InfoContext(ctx, "skipping item with disabled root",
 			"page_id", pageID,
 			"root_id", rootID)
 		return 0, nil
 	}
 
 	// Try to fetch as page first
-	fetchPageStart := time.Now()
-	page, err := c.client.GetPage(ctx, pageID)
-	fetchPageDuration := time.Since(fetchPageStart)
-	if err != nil {
-		// Check if this is actually a database
-		if strings.Contains(err.Error(), "is a database, not a page") {
-			c.logger.InfoContext(ctx, "detected database, processing as database", "page_id", pageID)
-			return c.processDatabase(ctx, pageID, folder, isInit, expectedParentID)
-		}
-		return 0, fmt.Errorf("fetch page: %w", err)
+	fetchStart := time.Now()
+	page, fetchErr := c.client.GetPage(ctx, pageID)
+	isDatabase := fetchErr != nil && strings.Contains(fetchErr.Error(), "is a database, not a page")
+	if fetchErr != nil && !isDatabase {
+		return 0, fmt.Errorf("fetch page: %w", fetchErr)
 	}
-	c.logger.DebugContext(ctx, "fetched page metadata", "page_id", pageID, "duration_ms", fetchPageDuration.Milliseconds())
 
-	// Enrich user data for created_by and last_edited_by
-	c.enrichUsers(ctx, &page.CreatedBy, &page.LastEditedBy)
+	var params *writeAndRegisterParams
 
-	// For new pages (not in registry), verify they belong to an enabled root
+	if isDatabase {
+		c.logger.InfoContext(ctx, "detected database, processing as database", "page_id", pageID)
+		params, folder, err = c.buildDatabaseParams(ctx, pageID, folder, fetchStart)
+	} else {
+		c.logger.DebugContext(ctx, "fetched page metadata",
+			"page_id", pageID, "duration_ms", time.Since(fetchStart).Milliseconds())
+		c.enrichUsers(ctx, &page.CreatedBy, &page.LastEditedBy)
+		params, folder, err = c.buildPageParams(ctx, page, pageID, folder, fetchStart)
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	// For new items (not in registry), verify they belong to an enabled root
 	existingReg, _ := c.loadPageRegistry(ctx, pageID)
 	if existingReg == nil {
+		syntheticPage := &notion.Page{ID: pageID, Parent: params.parent}
 		var ok bool
-		if folder, ok = c.verifyNewItemRoot(ctx, page, pageID, "page_id", folder); !ok {
+		if folder, ok = c.verifyNewItemRoot(ctx, syntheticPage, pageID, params.itemType+"_id", folder); !ok {
 			return 0, nil
 		}
 	}
 
-	// Fetch blocks with optional depth limit
+	params.folder = folder
+	params.isInit = isInit
+	params.expectedParentID = expectedParentID
+	params.existingReg = existingReg
+	params.enabled = enabled
+
+	return c.writeAndRegister(ctx, startTime, params)
+}
+
+// buildPageParams fetches blocks and builds writeAndRegisterParams for a page.
+func (c *Crawler) buildPageParams(
+	ctx context.Context, page *notion.Page, pageID, folder string, fetchStart time.Time,
+) (*writeAndRegisterParams, string, error) {
+	fetchPageDuration := time.Since(fetchStart)
+
 	fetchBlocksStart := time.Now()
 	maxDepth := getBlockDepthLimit()
 	blockResult, err := c.client.GetAllBlockChildrenWithLimit(ctx, pageID, maxDepth)
-	fetchBlocksDuration := time.Since(fetchBlocksStart)
 	if err != nil {
-		return 0, fmt.Errorf("fetch blocks: %w", err)
+		return nil, folder, fmt.Errorf("fetch blocks: %w", err)
 	}
+
 	blocks := blockResult.Blocks
+	fetchBlocksDuration := time.Since(fetchBlocksStart)
 	logArgs := []any{
 		"page_id", pageID,
 		"block_count", len(blocks),
@@ -833,18 +853,15 @@ func (c *Crawler) processPage(
 	}
 	c.logger.DebugContext(ctx, "fetched page blocks", logArgs...)
 
-	// Only set SimplifiedDepth if limiting actually occurred
 	simplifiedDepth := 0
 	if blockResult.WasLimited {
 		simplifiedDepth = blockResult.MaxDepth
 	}
 
 	downloadDuration := fetchPageDuration + fetchBlocksDuration
-
-	// Discover child pages
 	children := c.findChildPages(blocks)
 
-	return c.writeAndRegister(ctx, startTime, &writeAndRegisterParams{
+	return &writeAndRegisterParams{
 		itemID:   pageID,
 		itemType: "page",
 		title:    page.Title(),
@@ -864,71 +881,31 @@ func (c *Crawler) processPage(
 		},
 		lastEdited:       page.LastEditedTime,
 		parent:           page.Parent,
-		folder:           folder,
-		isInit:           isInit,
-		expectedParentID: expectedParentID,
-		existingReg:      existingReg,
-		enabled:          enabled,
 		downloadDuration: downloadDuration,
 		children:         children,
-	})
+	}, folder, nil
 }
 
-// processDatabase fetches and saves a database with its page links.
-// expectedParentID is an optional hint from the queue entry about the expected parent.
-// Returns (filesWritten, error).
-func (c *Crawler) processDatabase(
-	ctx context.Context, databaseID, folder string, isInit bool, expectedParentID string,
-) (int, error) {
-	startTime := time.Now()
-	c.logger.DebugContext(ctx, "processing database",
-		"database_id", databaseID,
-		"folder", folder,
-		"is_init", isInit,
-		"expected_parent_id", expectedParentID)
-
-	// Check if this database's root is enabled
-	enabled, rootID, err := c.isRootEnabled(ctx, databaseID)
-	if err == nil && !enabled && rootID != "" {
-		c.logger.InfoContext(ctx, "skipping database with disabled root",
-			"database_id", databaseID,
-			"root_id", rootID)
-		return 0, nil
-	}
-
-	// Fetch database metadata
-	fetchDBStart := time.Now()
+// buildDatabaseParams fetches database metadata and pages, and builds writeAndRegisterParams.
+func (c *Crawler) buildDatabaseParams(
+	ctx context.Context, databaseID, folder string, fetchStart time.Time,
+) (*writeAndRegisterParams, string, error) {
 	database, err := c.client.GetDatabase(ctx, databaseID)
-	fetchDBDuration := time.Since(fetchDBStart)
+	fetchDBDuration := time.Since(fetchStart)
 	if err != nil {
-		return 0, fmt.Errorf("fetch database: %w", err)
+		return nil, folder, fmt.Errorf("fetch database: %w", err)
 	}
 	c.logger.DebugContext(ctx, "fetched database metadata",
 		"database_id", databaseID,
 		"duration_ms", fetchDBDuration.Milliseconds())
 
-	// Enrich user data for created_by and last_edited_by
 	c.enrichUsers(ctx, &database.CreatedBy, &database.LastEditedBy)
 
-	// For new databases (not in registry), verify they belong to an enabled root
-	existingReg, _ := c.loadPageRegistry(ctx, databaseID)
-	if existingReg == nil {
-		dbAsPage := &notion.Page{
-			ID:     database.ID,
-			Parent: database.Parent,
-		}
-		var ok bool
-		if folder, ok = c.verifyNewItemRoot(ctx, dbAsPage, databaseID, "database_id", folder); !ok {
-			return 0, nil
-		}
-	}
-
-	// Query all pages in the database
 	queryDBStart := time.Now()
 	dbPages, err := c.client.QueryDatabase(ctx, databaseID)
 	queryDBDuration := time.Since(queryDBStart)
 	if err != nil {
-		return 0, fmt.Errorf("query database: %w", err)
+		return nil, folder, fmt.Errorf("query database: %w", err)
 	}
 	c.logger.DebugContext(ctx, "queried database pages",
 		"database_id", databaseID,
@@ -938,13 +915,12 @@ func (c *Crawler) processDatabase(
 	dbID := normalizePageID(databaseID)
 	downloadDuration := fetchDBDuration + queryDBDuration
 
-	// Collect child page IDs from database
 	var children []string
 	for i := range dbPages {
 		children = append(children, normalizePageID(dbPages[i].ID))
 	}
 
-	return c.writeAndRegister(ctx, startTime, &writeAndRegisterParams{
+	return &writeAndRegisterParams{
 		itemID:   dbID,
 		itemType: "database",
 		title:    database.GetTitle(),
@@ -963,12 +939,7 @@ func (c *Crawler) processDatabase(
 		},
 		lastEdited:       database.LastEditedTime,
 		parent:           database.Parent,
-		folder:           folder,
-		isInit:           isInit,
-		expectedParentID: expectedParentID,
-		existingReg:      existingReg,
-		enabled:          enabled,
 		downloadDuration: downloadDuration,
 		children:         children,
-	})
+	}, folder, nil
 }

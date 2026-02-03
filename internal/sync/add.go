@@ -17,33 +17,121 @@ import (
 	"github.com/fclairamb/ntnsync/internal/version"
 )
 
+// initForAdd validates the folder, ensures a transaction, creates the state directory, and loads state.
+func (c *Crawler) initForAdd(ctx context.Context, folder string) error {
+	if err := validateFolderName(folder); err != nil {
+		return fmt.Errorf("invalid folder name: %w", err)
+	}
+
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
+	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
+		return fmt.Errorf("create state dir: %w", err)
+	}
+
+	if err := c.loadState(ctx); err != nil {
+		c.logger.WarnContext(ctx, "could not load state, starting fresh", "error", err)
+	}
+
+	return nil
+}
+
+// finalizeAddParams holds the parameters for finalizeAdd.
+type finalizeAddParams struct {
+	itemID      string
+	itemType    string // "page" or "database"
+	title       string
+	folder      string
+	filePath    string
+	lastEdited  time.Time
+	content     []byte
+	children    []string
+	forceUpdate bool
+}
+
+// finalizeAdd handles the shared tail of AddDatabase and AddRootPage:
+// add folder to state, mkdir, write file, save state, save registry, queue children.
+func (c *Crawler) finalizeAdd(ctx context.Context, params *finalizeAddParams) error {
+	c.state.AddFolder(params.folder)
+
+	if err := c.tx.Mkdir(ctx, params.folder); err != nil {
+		return fmt.Errorf("create folder dir: %w", err)
+	}
+
+	hash := sha256.Sum256(params.content)
+	contentHash := hex.EncodeToString(hash[:])
+
+	if err := c.tx.Write(ctx, params.filePath, params.content); err != nil {
+		return fmt.Errorf("write %s: %w", params.itemType, err)
+	}
+
+	logKey := params.itemType + "_id"
+	c.logger.InfoContext(ctx, "downloaded "+params.itemType,
+		logKey, params.itemID,
+		"title", params.title,
+		"path", params.filePath)
+
+	if err := c.saveState(ctx); err != nil {
+		return fmt.Errorf("save state: %w", err)
+	}
+
+	now := time.Now()
+
+	if err := c.savePageRegistry(ctx, &PageRegistry{
+		NtnsyncVersion: version.Version,
+		ID:             params.itemID,
+		Type:           params.itemType,
+		Folder:         params.folder,
+		FilePath:       params.filePath,
+		Title:          params.title,
+		LastEdited:     params.lastEdited,
+		LastSynced:     now,
+		IsRoot:         true,
+		Enabled:        true,
+		ParentID:       "",
+		Children:       params.children,
+		ContentHash:    contentHash,
+	}); err != nil {
+		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
+	}
+
+	if len(params.children) > 0 {
+		queueType := queueTypeInit
+		if params.forceUpdate {
+			queueType = "update"
+		}
+
+		entry := queue.Entry{
+			Type:     queueType,
+			Folder:   params.folder,
+			PageIDs:  params.children,
+			ParentID: params.itemID,
+		}
+
+		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
+			return fmt.Errorf("create queue entry: %w", err)
+		}
+
+		c.logger.InfoContext(ctx, "queued child "+params.itemType+"s",
+			"count", len(params.children),
+			"type", queueType,
+			"parent_id", params.itemID)
+	}
+
+	return nil
+}
+
 // AddDatabase adds all pages from a database to a folder.
-//
-//nolint:funlen // Complex database initialization logic
 func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, forceUpdate bool) error {
 	c.logger.InfoContext(ctx, "adding database",
 		"database_id", databaseID,
 		"folder", folder,
 		"force_update", forceUpdate)
 
-	// Validate folder name
-	if err := validateFolderName(folder); err != nil {
-		return fmt.Errorf("invalid folder name: %w", err)
-	}
-
-	// Ensure transaction is available
-	if err := c.EnsureTransaction(ctx); err != nil {
-		return fmt.Errorf("ensure transaction: %w", err)
-	}
-
-	// Create state directory if needed
-	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
-		return fmt.Errorf("create state dir: %w", err)
-	}
-
-	// Load existing state
-	if err := c.loadState(ctx); err != nil {
-		c.logger.WarnContext(ctx, "could not load state, starting fresh", "error", err)
+	if err := c.initForAdd(ctx, folder); err != nil {
+		return err
 	}
 
 	// Fetch the database metadata
@@ -67,140 +155,56 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 		return nil
 	}
 
-	// Add folder to state
-	c.state.AddFolder(folder)
-
-	// Create folder directory
-	if err := c.tx.Mkdir(ctx, folder); err != nil {
-		return fmt.Errorf("create folder dir: %w", err)
-	}
-
-	// Save the database itself as a markdown file (as a root page)
 	dbID := normalizePageID(databaseID)
 	title := converter.SanitizeFilename(database.GetTitle())
 	if title == "" {
 		title = defaultUntitledStr
 	}
 
-	// Database is always a root page when added directly
 	filePath := filepath.Join(folder, title+".md")
 
-	now := time.Now()
-
-	// Convert database to markdown
 	content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     database.GetTitle(),
 		FilePath:      filePath,
-		LastSynced:    now,
+		LastSynced:    time.Now(),
 		NotionType:    "database",
 		IsRoot:        true,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, dbID),
 	})
 
-	// Compute content hash
-	hash := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hash[:])
-
-	// Write the database file
-	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return fmt.Errorf("write database: %w", err)
-	}
-
-	c.logger.InfoContext(ctx, "downloaded database",
-		"database_id", databaseID,
-		"title", database.GetTitle(),
-		"path", filePath,
-		"pages_count", len(dbPages))
-
-	// Collect page IDs to queue
-	var pageIDs []string
+	var children []string
 	for i := range dbPages {
 		dbPage := &dbPages[i]
 		pageID := normalizePageID(dbPage.ID)
-		pageIDs = append(pageIDs, pageID)
+		children = append(children, pageID)
 		c.logger.DebugContext(ctx, "found database page",
 			"page_id", pageID,
 			"title", dbPage.Title())
 	}
 
-	// Save state
-	if err := c.saveState(ctx); err != nil {
-		return fmt.Errorf("save state: %w", err)
-	}
-
-	// Save database registry
-	if err := c.savePageRegistry(ctx, &PageRegistry{
-		NtnsyncVersion: version.Version,
-		ID:             dbID,
-		Type:           "database",
-		Folder:         folder,
-		FilePath:       filePath,
-		Title:          database.GetTitle(),
-		LastEdited:     database.LastEditedTime,
-		LastSynced:     now,
-		IsRoot:         true,
-		Enabled:        true,
-		ParentID:       "",
-		Children:       pageIDs,
-		ContentHash:    contentHash,
-	}); err != nil {
-		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
-	}
-
-	// Create queue entry for all pages with database as parent
-	queueType := queueTypeInit
-	if forceUpdate {
-		queueType = "update"
-	}
-
-	entry := queue.Entry{
-		Type:     queueType,
-		Folder:   folder,
-		PageIDs:  pageIDs,
-		ParentID: dbID, // Set database as parent for proper folder structure
-	}
-
-	if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
-		return fmt.Errorf("create queue entry: %w", err)
-	}
-
-	c.logger.InfoContext(ctx, "queued database pages",
-		"database", database.GetTitle(),
-		"count", len(pageIDs),
-		"type", queueType,
-		"parent_id", dbID)
-
-	return nil
+	return c.finalizeAdd(ctx, &finalizeAddParams{
+		itemID:      dbID,
+		itemType:    "database",
+		title:       database.GetTitle(),
+		folder:      folder,
+		filePath:    filePath,
+		lastEdited:  database.LastEditedTime,
+		content:     content,
+		children:    children,
+		forceUpdate: forceUpdate,
+	})
 }
 
 // AddRootPage adds a page as a root page in a folder and queues it for syncing.
-//
-//nolint:funlen // Complex root page initialization logic
 func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceUpdate bool) error {
 	c.logger.InfoContext(ctx, "adding root page",
 		"page_id", pageID,
 		"folder", folder,
 		"force_update", forceUpdate)
 
-	// Validate folder name
-	if err := validateFolderName(folder); err != nil {
-		return fmt.Errorf("invalid folder name: %w", err)
-	}
-
-	// Ensure transaction is available
-	if err := c.EnsureTransaction(ctx); err != nil {
-		return fmt.Errorf("ensure transaction: %w", err)
-	}
-
-	// Create state directory if needed
-	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
-		return fmt.Errorf("create state dir: %w", err)
-	}
-
-	// Load existing state
-	if err := c.loadState(ctx); err != nil {
-		c.logger.WarnContext(ctx, "could not load state, starting fresh", "error", err)
+	if err := c.initForAdd(ctx, folder); err != nil {
+		return err
 	}
 
 	// Fetch the page from Notion
@@ -215,96 +219,31 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 		return fmt.Errorf("fetch blocks: %w", err)
 	}
 
-	// Add folder to state
-	c.state.AddFolder(folder)
-
-	// Compute file path (check for existing path first for stability)
 	filePath := c.computeFilePath(ctx, page, folder, true, "")
 
-	// Create folder directory
-	if err := c.tx.Mkdir(ctx, folder); err != nil {
-		return fmt.Errorf("create folder dir: %w", err)
-	}
-
-	now := time.Now()
-
-	// Convert page to markdown
 	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     page.Title(),
 		FilePath:      filePath,
-		LastSynced:    now,
+		LastSynced:    time.Now(),
 		NotionType:    "page",
 		IsRoot:        true,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
 	})
 
-	// Compute content hash
-	hash := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hash[:])
-
-	// Write the file
-	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return fmt.Errorf("write page: %w", err)
-	}
-
-	c.logger.InfoContext(ctx, "downloaded root page",
-		"page_id", pageID,
-		"title", page.Title(),
-		"path", filePath)
-
-	// Discover child pages
 	children := c.findChildPages(blocks)
 
-	// Save state
-	if err := c.saveState(ctx); err != nil {
-		return fmt.Errorf("save state: %w", err)
-	}
-
-	// Save page registry
-	if err := c.savePageRegistry(ctx, &PageRegistry{
-		NtnsyncVersion: version.Version,
-		ID:             pageID,
-		Type:           "page",
-		Folder:         folder,
-		FilePath:       filePath,
-		Title:          page.Title(),
-		LastEdited:     page.LastEditedTime,
-		LastSynced:     now,
-		IsRoot:         true,
-		Enabled:        true,
-		ParentID:       "",
-		Children:       children,
-		ContentHash:    contentHash,
-	}); err != nil {
-		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
-	}
-
-	// Create queue entry for child pages
-	if len(children) > 0 {
-		queueType := queueTypeInit
-		if forceUpdate {
-			queueType = "update"
-		}
-
-		entry := queue.Entry{
-			Type:     queueType,
-			Folder:   folder,
-			PageIDs:  children,
-			ParentID: pageID, // Set parent ID for proper folder structure
-		}
-
-		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
-			return fmt.Errorf("create queue entry: %w", err)
-		}
-
-		c.logger.InfoContext(ctx, "queued child pages",
-			"count", len(children),
-			"type", queueType,
-			"parent_id", pageID)
-	}
-
-	return nil
+	return c.finalizeAdd(ctx, &finalizeAddParams{
+		itemID:      pageID,
+		itemType:    "page",
+		title:       page.Title(),
+		folder:      folder,
+		filePath:    filePath,
+		lastEdited:  page.LastEditedTime,
+		content:     content,
+		children:    children,
+		forceUpdate: forceUpdate,
+	})
 }
 
 // GetPage fetches a single page and places it in the correct location based on its parent hierarchy.
@@ -609,8 +548,6 @@ func (c *Crawler) writeRegistryAndQueue(
 
 // savePageFromNotion fetches blocks and saves a page to the store.
 // Handles both regular pages and databases (when parent is a database).
-//
-//nolint:funlen // Handles both page and database cases with shared write/registry/queue logic
 func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, folder string, isRoot bool) error {
 	pageID := normalizePageID(page.ID)
 
