@@ -630,19 +630,19 @@ type writeAndRegisterParams struct {
 //
 //nolint:funlen // Shared logic for page/database processing
 func (c *Crawler) writeAndRegister(
-	ctx context.Context, startTime time.Time, p *writeAndRegisterParams,
+	ctx context.Context, startTime time.Time, params *writeAndRegisterParams,
 ) (int, error) {
 	filesWritten := 0
-	logKey := p.itemType + "_id"
+	logKey := params.itemType + "_id"
 
 	// Determine parent (resolving block parent if needed)
-	blockRes := c.resolveBlockParentWithLogging(ctx, p.itemID, logKey, p.parent.BlockID, p.parent)
+	blockRes := c.resolveBlockParentWithLogging(ctx, params.itemID, logKey, params.parent.BlockID, params.parent)
 	parentID := blockRes.parentID
 	isRoot := blockRes.isRoot
 
 	// Resolve and fetch parent if needed
 	parentResult, err := c.resolveAndFetchParent(
-		ctx, p.itemID, logKey, parentID, p.expectedParentID, p.folder, p.isInit, isRoot)
+		ctx, params.itemID, logKey, parentID, params.expectedParentID, params.folder, params.isInit, isRoot)
 	if err != nil {
 		return 0, err
 	}
@@ -652,18 +652,18 @@ func (c *Crawler) writeAndRegister(
 
 	// Compute file path using a synthetic page (computeFilePath checks registry first for stability)
 	syntheticPage := &notion.Page{
-		ID:     p.itemID,
-		Parent: p.parent,
+		ID:     params.itemID,
+		Parent: params.parent,
 		Properties: notion.Properties{
-			"title": {Type: "title", Title: []notion.RichText{{PlainText: p.title}}},
+			"title": {Type: "title", Title: []notion.RichText{{PlainText: params.title}}},
 		},
 	}
-	filePath := c.computeFilePath(ctx, syntheticPage, p.folder, isRoot, parentID)
+	filePath := c.computeFilePath(ctx, syntheticPage, params.folder, isRoot, parentID)
 
 	now := time.Now()
 
 	// Convert to markdown with resolved path, isRoot, and parentID
-	content := p.convert(filePath, isRoot, parentID)
+	content := params.convert(filePath, isRoot, parentID)
 
 	// Compute content hash
 	hash := sha256.Sum256(content)
@@ -672,40 +672,40 @@ func (c *Crawler) writeAndRegister(
 	// Write file
 	writeStart := time.Now()
 	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return 0, fmt.Errorf("write %s: %w", p.itemType, err)
+		return 0, fmt.Errorf("write %s: %w", params.itemType, err)
 	}
 	writeDuration := time.Since(writeStart)
 	filesWritten++
 
 	totalDuration := time.Since(startTime)
-	c.logger.InfoContext(ctx, "downloaded "+p.itemType,
-		logKey, p.itemID,
-		"title", p.title,
+	c.logger.InfoContext(ctx, "downloaded "+params.itemType,
+		logKey, params.itemID,
+		"title", params.title,
 		"path", filePath,
 		"total_ms", totalDuration.Milliseconds(),
-		"download_ms", p.downloadDuration.Milliseconds(),
+		"download_ms", params.downloadDuration.Milliseconds(),
 		"write_ms", writeDuration.Milliseconds())
 
 	// Preserve IsRoot and Enabled from existing registry (set by ReconcileRootMd)
-	if p.existingReg != nil && p.existingReg.IsRoot {
+	if params.existingReg != nil && params.existingReg.IsRoot {
 		isRoot = true
-		p.enabled = p.existingReg.Enabled
+		params.enabled = params.existingReg.Enabled
 	}
 
 	// Save page registry
 	if err := c.savePageRegistry(ctx, &PageRegistry{
 		NtnsyncVersion: version.Version,
-		ID:             p.itemID,
-		Type:           p.itemType,
-		Folder:         p.folder,
+		ID:             params.itemID,
+		Type:           params.itemType,
+		Folder:         params.folder,
 		FilePath:       filePath,
-		Title:          p.title,
-		LastEdited:     p.lastEdited,
+		Title:          params.title,
+		LastEdited:     params.lastEdited,
 		LastSynced:     now,
 		IsRoot:         isRoot,
-		Enabled:        p.enabled,
+		Enabled:        params.enabled,
 		ParentID:       parentID,
-		Children:       p.children,
+		Children:       params.children,
 		ContentHash:    contentHash,
 	}); err != nil {
 		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
@@ -713,7 +713,7 @@ func (c *Crawler) writeAndRegister(
 
 	// Queue children if they don't exist yet
 	var newChildren []string
-	for _, childID := range p.children {
+	for _, childID := range params.children {
 		if _, err := c.loadPageRegistry(ctx, childID); err != nil {
 			newChildren = append(newChildren, childID)
 		}
@@ -722,15 +722,15 @@ func (c *Crawler) writeAndRegister(
 	if len(newChildren) > 0 {
 		entry := queue.Entry{
 			Type:     queueTypeInit,
-			Folder:   p.folder,
+			Folder:   params.folder,
 			PageIDs:  newChildren,
-			ParentID: p.itemID,
+			ParentID: params.itemID,
 		}
 
 		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
 			c.logger.WarnContext(ctx, "failed to queue child pages", "error", err)
 		} else {
-			c.logger.DebugContext(ctx, "queued child pages", "count", len(newChildren), "parent_id", p.itemID)
+			c.logger.DebugContext(ctx, "queued child pages", "count", len(newChildren), "parent_id", params.itemID)
 		}
 	}
 

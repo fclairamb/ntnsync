@@ -13,14 +13,14 @@ import (
 )
 
 // saveRegistry saves a registry file with the given prefix and ID.
-func saveRegistry[T any](c *Crawler, ctx context.Context, prefix, id string, data *T) error {
+func saveRegistry[T any](ctx context.Context, crawler *Crawler, prefix, registryID string, data *T) error {
 	jsonData, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal registry: %w", err)
 	}
 
-	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("%s-%s.json", prefix, id))
-	if err := c.tx.Write(ctx, path, jsonData); err != nil {
+	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("%s-%s.json", prefix, registryID))
+	if err := crawler.tx.Write(ctx, path, jsonData); err != nil {
 		return fmt.Errorf("write registry: %w", err)
 	}
 
@@ -28,9 +28,9 @@ func saveRegistry[T any](c *Crawler, ctx context.Context, prefix, id string, dat
 }
 
 // loadRegistry loads a registry file with the given prefix and ID.
-func loadRegistry[T any](c *Crawler, ctx context.Context, prefix, id string) (*T, error) {
-	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("%s-%s.json", prefix, id))
-	data, err := c.store.Read(ctx, path)
+func loadRegistry[T any](ctx context.Context, crawler *Crawler, prefix, registryID string) (*T, error) {
+	path := filepath.Join(stateDir, idsDir, fmt.Sprintf("%s-%s.json", prefix, registryID))
+	data, err := crawler.store.Read(ctx, path)
 	if err != nil {
 		return nil, fmt.Errorf("read registry: %w", err)
 	}
@@ -45,13 +45,13 @@ func loadRegistry[T any](c *Crawler, ctx context.Context, prefix, id string) (*T
 
 // savePageRegistry saves a page registry file.
 func (c *Crawler) savePageRegistry(ctx context.Context, reg *PageRegistry) error {
-	return saveRegistry(c, ctx, "page", reg.ID, reg)
+	return saveRegistry(ctx, c, "page", reg.ID, reg)
 }
 
 // loadPageRegistry loads a page registry file.
 // Tries page-{id}.json format first, falls back to old format ({id}.json) for backward compatibility.
 func (c *Crawler) loadPageRegistry(ctx context.Context, pageID string) (*PageRegistry, error) {
-	reg, err := loadRegistry[PageRegistry](c, ctx, "page", pageID)
+	reg, err := loadRegistry[PageRegistry](ctx, c, "page", pageID)
 	if err != nil {
 		// Fall back to old format for backward compatibility
 		oldPath := filepath.Join(stateDir, idsDir, pageID+".json")
@@ -73,22 +73,22 @@ func (c *Crawler) loadPageRegistry(ctx context.Context, pageID string) (*PageReg
 
 // saveFileRegistry saves a file registry to disk.
 func (c *Crawler) saveFileRegistry(ctx context.Context, reg *FileRegistry) error {
-	return saveRegistry(c, ctx, "file", reg.ID, reg)
+	return saveRegistry(ctx, c, "file", reg.ID, reg)
 }
 
 // loadFileRegistry loads a file registry by ID.
 func (c *Crawler) loadFileRegistry(ctx context.Context, fileID string) (*FileRegistry, error) {
-	return loadRegistry[FileRegistry](c, ctx, "file", fileID)
+	return loadRegistry[FileRegistry](ctx, c, "file", fileID)
 }
 
 // saveUserRegistry saves a user registry file.
 func (c *Crawler) saveUserRegistry(ctx context.Context, reg *UserRegistry) error {
-	return saveRegistry(c, ctx, "user", reg.ID, reg)
+	return saveRegistry(ctx, c, "user", reg.ID, reg)
 }
 
 // loadUserRegistry loads a user registry file.
 func (c *Crawler) loadUserRegistry(ctx context.Context, userID string) (*UserRegistry, error) {
-	return loadRegistry[UserRegistry](c, ctx, "user", userID)
+	return loadRegistry[UserRegistry](ctx, c, "user", userID)
 }
 
 // enrichUser resolves a user's name by checking the local registry first,
