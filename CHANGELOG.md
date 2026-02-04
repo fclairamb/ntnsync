@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.6.0](https://github.com/fclairamb/ntnsync/compare/v0.5.0...v0.6.0) (2026-02-04)
+
+
+### Features
+
+* **converter:** add download_duration to frontmatter ([#35](https://github.com/fclairamb/ntnsync/issues/35)) ([953068f](https://github.com/fclairamb/ntnsync/commit/953068f19ad935c7d5b71a291aa6747eb6085f2c))
+* **notion:** add user info format with name, email, and short ID ([#29](https://github.com/fclairamb/ntnsync/issues/29)) ([67b9de3](https://github.com/fclairamb/ntnsync/commit/67b9de36d0f50f12359f0eaa912d8d38bc39fb05))
+* **notion:** upgrade to API version 2025-09-03 ([#31](https://github.com/fclairamb/ntnsync/issues/31)) ([7e44184](https://github.com/fclairamb/ntnsync/commit/7e44184b0071540aff90e16d6a7811ee50f0412c))
+* **sync:** add ntnsync_version to all generated files ([#27](https://github.com/fclairamb/ntnsync/issues/27)) ([21539ee](https://github.com/fclairamb/ntnsync/commit/21539eeb5911fe7cdecaffebec13b5156035d984))
+* **sync:** add user enrichment to cache created_by and last_edited_by names ([#43](https://github.com/fclairamb/ntnsync/issues/43)) ([6b972cf](https://github.com/fclairamb/ntnsync/commit/6b972cf9c41aab2054da046a973258e39693216b))
+* **sync:** change root.md format to task list for GitHub interactivity ([#33](https://github.com/fclairamb/ntnsync/issues/33)) ([4a90370](https://github.com/fclairamb/ntnsync/commit/4a90370eff0af14746803ba5e653d32cb816088a))
+* **sync:** replace add command with root.md manifest file ([#30](https://github.com/fclairamb/ntnsync/issues/30)) ([df4477b](https://github.com/fclairamb/ntnsync/commit/df4477bef2e445e60ab843b3358dfed22b430a16))
+
+
+### Bug Fixes
+
+* **store:** handle diverged branches during pull ([#36](https://github.com/fclairamb/ntnsync/issues/36)) ([ba7b042](https://github.com/fclairamb/ntnsync/commit/ba7b042af9c9048b1830a254c966e01522b29cda))
+* **store:** update remote origin URL when it changes ([#32](https://github.com/fclairamb/ntnsync/issues/32)) ([4af69da](https://github.com/fclairamb/ntnsync/commit/4af69da93922bd80c243b0b8907f19fd4e487ae5))
+* **store:** use configured branch for git push operations ([#42](https://github.com/fclairamb/ntnsync/issues/42)) ([203f5ae](https://github.com/fclairamb/ntnsync/commit/203f5ae97535edb1a13750e948e315e32fcf00f1))
+* **sync:** filter new items by root and queue on startup ([#40](https://github.com/fclairamb/ntnsync/issues/40)) ([8570ce8](https://github.com/fclairamb/ntnsync/commit/8570ce8e088b90753d46b8323e32eb5697cae338))
+* **sync:** filter new pages by root.md during pull ([#34](https://github.com/fclairamb/ntnsync/issues/34)) ([eb351eb](https://github.com/fclairamb/ntnsync/commit/eb351ebfba6e0b98ca0c377e8d85d4c906937697))
+* **sync:** filter new pages/databases by root.md during processing ([#39](https://github.com/fclairamb/ntnsync/issues/39)) ([d02f2ff](https://github.com/fclairamb/ntnsync/commit/d02f2ff5846064e3d76d73af4a705a3c5d147a6a))
+* **sync:** preserve IsRoot and Enabled flags during page/database processing ([#41](https://github.com/fclairamb/ntnsync/issues/41)) ([588c1fd](https://github.com/fclairamb/ntnsync/commit/588c1fdfef9202951b8da53d1d58a3365b94f93c))
+
+
+### Code Refactoring
+
+* **logging:** use milliseconds for all duration logging ([#37](https://github.com/fclairamb/ntnsync/issues/37)) ([bb99e33](https://github.com/fclairamb/ntnsync/commit/bb99e335ed37a6bde6fe6250d961b6996f8b57af))
+* **sync:** reduce code duplication across page/database processing ([#44](https://github.com/fclairamb/ntnsync/issues/44)) ([09d7ec4](https://github.com/fclairamb/ntnsync/commit/09d7ec412a231ccb943b6ccce51960e1ef4c62e9))
+
 ## [0.5.0](https://github.com/fclairamb/ntnsync/compare/v0.4.0...v0.5.0) (2026-01-29)
 
 
