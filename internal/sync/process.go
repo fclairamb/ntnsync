@@ -604,12 +604,169 @@ func (c *Crawler) resolveAndFetchParent(
 	return result, nil
 }
 
+// writeAndRegisterParams holds parameters for writeAndRegister.
+type writeAndRegisterParams struct {
+	itemID           string
+	itemType         string // "page" or "database" (for logging and registry)
+	title            string
+	lastEdited       time.Time
+	parent           notion.Parent
+	folder           string
+	isInit           bool
+	expectedParentID string
+	existingReg      *PageRegistry
+	enabled          bool
+
+	// convert generates the markdown content given the resolved file path, isRoot, and parentID.
+	convert          func(filePath string, isRoot bool, parentID string) []byte
+	downloadDuration time.Duration
+
+	// Children
+	children []string
+}
+
+// writeAndRegister handles parent resolution, file path computation, conversion, writing,
+// registry saving, and child queuing. Used by processPage for both pages and databases.
+//
+//nolint:funlen // Shared logic for page/database processing
+func (c *Crawler) writeAndRegister(
+	ctx context.Context, startTime time.Time, params *writeAndRegisterParams,
+) (int, error) {
+	filesWritten := 0
+	logKey := params.itemType + "_id"
+
+	// Determine parent (resolving block parent if needed)
+	blockRes := c.resolveBlockParentWithLogging(ctx, params.itemID, logKey, params.parent.BlockID, params.parent)
+	parentID := blockRes.parentID
+	isRoot := blockRes.isRoot
+
+	// Resolve and fetch parent if needed
+	parentResult, err := c.resolveAndFetchParent(
+		ctx, params.itemID, logKey, parentID, params.expectedParentID, params.folder, params.isInit, isRoot)
+	if err != nil {
+		return 0, err
+	}
+	parentID = parentResult.parentID
+	isRoot = parentResult.isRoot
+	filesWritten += parentResult.filesWritten
+
+	// Compute file path using a synthetic page (computeFilePath checks registry first for stability)
+	syntheticPage := &notion.Page{
+		ID:     params.itemID,
+		Parent: params.parent,
+		Properties: notion.Properties{
+			"title": {Type: "title", Title: []notion.RichText{{PlainText: params.title}}},
+		},
+	}
+	filePath := c.computeFilePath(ctx, syntheticPage, params.folder, isRoot, parentID)
+
+	now := time.Now()
+
+	// Convert to markdown with resolved path, isRoot, and parentID
+	content := params.convert(filePath, isRoot, parentID)
+
+	// Compute content hash
+	hash := sha256.Sum256(content)
+	contentHash := hex.EncodeToString(hash[:])
+
+	// Write file
+	writeStart := time.Now()
+	if err := c.tx.Write(ctx, filePath, content); err != nil {
+		return 0, fmt.Errorf("write %s: %w", params.itemType, err)
+	}
+	writeDuration := time.Since(writeStart)
+	filesWritten++
+
+	totalDuration := time.Since(startTime)
+	c.logger.InfoContext(ctx, "downloaded "+params.itemType,
+		logKey, params.itemID,
+		"title", params.title,
+		"path", filePath,
+		"total_ms", totalDuration.Milliseconds(),
+		"download_ms", params.downloadDuration.Milliseconds(),
+		"write_ms", writeDuration.Milliseconds())
+
+	// Preserve IsRoot and Enabled from existing registry (set by ReconcileRootMd)
+	if params.existingReg != nil && params.existingReg.IsRoot {
+		isRoot = true
+		params.enabled = params.existingReg.Enabled
+	}
+
+	// Save page registry
+	if err := c.savePageRegistry(ctx, &PageRegistry{
+		NtnsyncVersion: version.Version,
+		ID:             params.itemID,
+		Type:           params.itemType,
+		Folder:         params.folder,
+		FilePath:       filePath,
+		Title:          params.title,
+		LastEdited:     params.lastEdited,
+		LastSynced:     now,
+		IsRoot:         isRoot,
+		Enabled:        params.enabled,
+		ParentID:       parentID,
+		Children:       params.children,
+		ContentHash:    contentHash,
+	}); err != nil {
+		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
+	}
+
+	// Queue children if they don't exist yet
+	var newChildren []string
+	for _, childID := range params.children {
+		if _, err := c.loadPageRegistry(ctx, childID); err != nil {
+			newChildren = append(newChildren, childID)
+		}
+	}
+
+	if len(newChildren) > 0 {
+		entry := queue.Entry{
+			Type:     queueTypeInit,
+			Folder:   params.folder,
+			PageIDs:  newChildren,
+			ParentID: params.itemID,
+		}
+
+		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
+			c.logger.WarnContext(ctx, "failed to queue child pages", "error", err)
+		} else {
+			c.logger.DebugContext(ctx, "queued child pages", "count", len(newChildren), "parent_id", params.itemID)
+		}
+	}
+
+	return filesWritten, nil
+}
+
+// verifyNewItemRoot checks that a new item (not in registry) belongs to an enabled root.
+// Returns the updated folder and whether processing should continue.
+func (c *Crawler) verifyNewItemRoot(
+	ctx context.Context, page *notion.Page, itemID, logKey, folder string,
+) (string, bool) {
+	_, detectedFolder, foundRoot, err := c.traceParentChain(ctx, page, folder)
+	if err != nil {
+		c.logger.WarnContext(ctx, "failed to trace parent chain",
+			logKey, itemID,
+			"error", err)
+		return folder, false
+	}
+	if !foundRoot {
+		c.logger.InfoContext(ctx, "skipping item not under any root in root.md",
+			logKey, itemID)
+		return folder, false
+	}
+	if folder != detectedFolder {
+		c.logger.DebugContext(ctx, "using folder from parent chain",
+			logKey, itemID,
+			"requested_folder", folder,
+			"detected_folder", detectedFolder)
+		folder = detectedFolder
+	}
+	return folder, true
+}
+
 // processPage fetches and saves a single page or database.
 // expectedParentID is an optional hint from the queue entry about the expected parent.
-// processPage processes a single page and returns the number of markdown files written.
 // Returns (filesWritten, error).
-//
-//nolint:funlen // Complex page processing with child queuing
 func (c *Crawler) processPage(
 	ctx context.Context, pageID, folder string, isInit bool, expectedParentID string,
 ) (int, error) {
@@ -620,72 +777,72 @@ func (c *Crawler) processPage(
 		"is_init", isInit,
 		"expected_parent_id", expectedParentID)
 
-	// Check if this page's root is enabled
+	// Check if this item's root is enabled
 	enabled, rootID, err := c.isRootEnabled(ctx, pageID)
 	if err == nil && !enabled && rootID != "" {
-		c.logger.InfoContext(ctx, "skipping page with disabled root",
+		c.logger.InfoContext(ctx, "skipping item with disabled root",
 			"page_id", pageID,
 			"root_id", rootID)
 		return 0, nil
 	}
 
-	filesWritten := 0
-
 	// Try to fetch as page first
-	fetchPageStart := time.Now()
-	page, err := c.client.GetPage(ctx, pageID)
-	fetchPageDuration := time.Since(fetchPageStart)
-	if err != nil {
-		// Check if this is actually a database
-		if strings.Contains(err.Error(), "is a database, not a page") {
-			c.logger.InfoContext(ctx, "detected database, processing as database", "page_id", pageID)
-			return c.processDatabase(ctx, pageID, folder, isInit, expectedParentID)
-		}
-		return 0, fmt.Errorf("fetch page: %w", err)
+	fetchStart := time.Now()
+	page, fetchErr := c.client.GetPage(ctx, pageID)
+	isDatabase := fetchErr != nil && strings.Contains(fetchErr.Error(), "is a database, not a page")
+	if fetchErr != nil && !isDatabase {
+		return 0, fmt.Errorf("fetch page: %w", fetchErr)
 	}
-	c.logger.DebugContext(ctx, "fetched page metadata", "page_id", pageID, "duration_ms", fetchPageDuration.Milliseconds())
 
-	// Enrich user data for created_by and last_edited_by
-	c.enrichPageUsers(ctx, page)
+	var params *writeAndRegisterParams
 
-	// For new pages (not in registry), verify they belong to an enabled root before processing.
-	// This prevents saving pages from webhooks that don't belong to any root.md entry.
+	if isDatabase {
+		c.logger.InfoContext(ctx, "detected database, processing as database", "page_id", pageID)
+		params, folder, err = c.buildDatabaseParams(ctx, pageID, folder, fetchStart)
+	} else {
+		c.logger.DebugContext(ctx, "fetched page metadata",
+			"page_id", pageID, "duration_ms", time.Since(fetchStart).Milliseconds())
+		c.enrichUsers(ctx, &page.CreatedBy, &page.LastEditedBy)
+		params, folder, err = c.buildPageParams(ctx, page, pageID, folder, fetchStart)
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	// For new items (not in registry), verify they belong to an enabled root
 	existingReg, _ := c.loadPageRegistry(ctx, pageID)
 	if existingReg == nil {
-		var detectedFolder string
-		var foundRoot bool
-		_, detectedFolder, foundRoot, err = c.traceParentChain(ctx, page, folder)
-		if err != nil {
-			c.logger.WarnContext(ctx, "failed to trace parent chain for new page",
-				"page_id", pageID,
-				"error", err)
+		syntheticPage := &notion.Page{ID: pageID, Parent: params.parent}
+		var ok bool
+		if folder, ok = c.verifyNewItemRoot(ctx, syntheticPage, pageID, params.itemType+"_id", folder); !ok {
 			return 0, nil
-		}
-		if !foundRoot {
-			c.logger.InfoContext(ctx, "skipping page not under any root in root.md",
-				"page_id", pageID,
-				"title", page.Title())
-			return 0, nil
-		}
-		// Update folder from parent chain if different from default
-		if folder != detectedFolder {
-			c.logger.DebugContext(ctx, "using folder from parent chain",
-				"page_id", pageID,
-				"requested_folder", folder,
-				"detected_folder", detectedFolder)
-			folder = detectedFolder
 		}
 	}
 
-	// Fetch blocks with optional depth limit
+	params.folder = folder
+	params.isInit = isInit
+	params.expectedParentID = expectedParentID
+	params.existingReg = existingReg
+	params.enabled = enabled
+
+	return c.writeAndRegister(ctx, startTime, params)
+}
+
+// buildPageParams fetches blocks and builds writeAndRegisterParams for a page.
+func (c *Crawler) buildPageParams(
+	ctx context.Context, page *notion.Page, pageID, folder string, fetchStart time.Time,
+) (*writeAndRegisterParams, string, error) {
+	fetchPageDuration := time.Since(fetchStart)
+
 	fetchBlocksStart := time.Now()
 	maxDepth := getBlockDepthLimit()
 	blockResult, err := c.client.GetAllBlockChildrenWithLimit(ctx, pageID, maxDepth)
-	fetchBlocksDuration := time.Since(fetchBlocksStart)
 	if err != nil {
-		return 0, fmt.Errorf("fetch blocks: %w", err)
+		return nil, folder, fmt.Errorf("fetch blocks: %w", err)
 	}
+
 	blocks := blockResult.Blocks
+	fetchBlocksDuration := time.Since(fetchBlocksStart)
 	logArgs := []any{
 		"page_id", pageID,
 		"block_count", len(blocks),
@@ -696,350 +853,93 @@ func (c *Crawler) processPage(
 	}
 	c.logger.DebugContext(ctx, "fetched page blocks", logArgs...)
 
-	// Determine parent (resolving block parent if needed)
-	blockRes := c.resolveBlockParentWithLogging(ctx, pageID, "page_id", page.Parent.BlockID, page.Parent)
-	parentID := blockRes.parentID
-	isRoot := blockRes.isRoot
-
-	// Resolve and fetch parent if needed
-	parentResult, err := c.resolveAndFetchParent(
-		ctx, pageID, "page_id", parentID, expectedParentID, folder, isInit, isRoot)
-	if err != nil {
-		return 0, err
-	}
-	parentID = parentResult.parentID
-	isRoot = parentResult.isRoot
-	filesWritten += parentResult.filesWritten
-
-	// Compute file path (using resolved parent ID)
-	filePath := c.computeFilePath(ctx, page, folder, isRoot, parentID)
-
-	now := time.Now()
-
-	// Only set SimplifiedDepth if limiting actually occurred
 	simplifiedDepth := 0
 	if blockResult.WasLimited {
 		simplifiedDepth = blockResult.MaxDepth
 	}
 
-	// Calculate download duration (API fetch time)
 	downloadDuration := fetchPageDuration + fetchBlocksDuration
-
-	// Convert to markdown
-	convertStart := time.Now()
-	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
-		Folder:           folder,
-		PageTitle:        page.Title(),
-		FilePath:         filePath,
-		LastSynced:       now,
-		NotionType:       "page",
-		IsRoot:           isRoot,
-		ParentID:         parentID,
-		FileProcessor:    c.makeFileProcessor(ctx, filePath, pageID),
-		SimplifiedDepth:  simplifiedDepth,
-		DownloadDuration: downloadDuration,
-	})
-	convertDuration := time.Since(convertStart)
-
-	// Compute content hash
-	hash := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hash[:])
-
-	// Write file
-	writeStart := time.Now()
-	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return 0, fmt.Errorf("write page: %w", err)
-	}
-	writeDuration := time.Since(writeStart)
-	filesWritten++ // Count this file write
-
-	totalDuration := time.Since(startTime)
-	downloadLogArgs := []any{
-		"page_id", pageID,
-		"title", page.Title(),
-		"path", filePath,
-		"total_ms", totalDuration.Milliseconds(),
-		"fetch_page_ms", fetchPageDuration.Milliseconds(),
-		"fetch_blocks_ms", fetchBlocksDuration.Milliseconds(),
-		"convert_ms", convertDuration.Milliseconds(),
-		"write_ms", writeDuration.Milliseconds(),
-	}
-	if simplifiedDepth > 0 {
-		downloadLogArgs = append(downloadLogArgs, "simplified_depth", simplifiedDepth)
-	}
-	c.logger.InfoContext(ctx, "downloaded page", downloadLogArgs...)
-
-	// Discover child pages
 	children := c.findChildPages(blocks)
 
-	// Preserve IsRoot and Enabled from existing registry (set by ReconcileRootMd)
-	if existingReg != nil && existingReg.IsRoot {
-		isRoot = true
-		enabled = existingReg.Enabled
-	}
-
-	// Save page registry
-	if err := c.savePageRegistry(ctx, &PageRegistry{
-		NtnsyncVersion: version.Version,
-		ID:             pageID,
-		Type:           "page",
-		Folder:         folder,
-		FilePath:       filePath,
-		Title:          page.Title(),
-		LastEdited:     page.LastEditedTime,
-		LastSynced:     now,
-		IsRoot:         isRoot,
-		Enabled:        enabled,
-		ParentID:       parentID,
-		Children:       children,
-		ContentHash:    contentHash,
-	}); err != nil {
-		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
-	}
-
-	// Queue child pages if they don't exist yet
-	var newChildren []string
-	for _, childID := range children {
-		if _, err := c.loadPageRegistry(ctx, childID); err != nil {
-			// Child doesn't exist yet
-			newChildren = append(newChildren, childID)
-		}
-	}
-
-	if len(newChildren) > 0 {
-		entry := queue.Entry{
-			Type:     queueTypeInit,
-			Folder:   folder,
-			PageIDs:  newChildren,
-			ParentID: pageID, // Set parent ID for proper folder structure
-		}
-
-		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
-			c.logger.WarnContext(ctx, "failed to queue child pages", "error", err)
-		} else {
-			c.logger.DebugContext(ctx, "queued child pages", "count", len(newChildren), "parent_id", pageID)
-		}
-	}
-
-	return filesWritten, nil
+	return &writeAndRegisterParams{
+		itemID:   pageID,
+		itemType: "page",
+		title:    page.Title(),
+		convert: func(filePath string, isRoot bool, parentID string) []byte {
+			return c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
+				Folder:           folder,
+				PageTitle:        page.Title(),
+				FilePath:         filePath,
+				LastSynced:       time.Now(),
+				NotionType:       "page",
+				IsRoot:           isRoot,
+				ParentID:         parentID,
+				FileProcessor:    c.makeFileProcessor(ctx, filePath, pageID),
+				SimplifiedDepth:  simplifiedDepth,
+				DownloadDuration: downloadDuration,
+			})
+		},
+		lastEdited:       page.LastEditedTime,
+		parent:           page.Parent,
+		downloadDuration: downloadDuration,
+		children:         children,
+	}, folder, nil
 }
 
-// processDatabase fetches and saves a database with its page links.
-// expectedParentID is an optional hint from the queue entry about the expected parent.
-// Returns (filesWritten, error).
-//
-//nolint:funlen // Complex database processing with child queuing
-func (c *Crawler) processDatabase(
-	ctx context.Context, databaseID, folder string, isInit bool, expectedParentID string,
-) (int, error) {
-	startTime := time.Now()
-	c.logger.DebugContext(ctx, "processing database",
-		"database_id", databaseID,
-		"folder", folder,
-		"is_init", isInit,
-		"expected_parent_id", expectedParentID)
-
-	// Check if this database's root is enabled
-	enabled, rootID, err := c.isRootEnabled(ctx, databaseID)
-	if err == nil && !enabled && rootID != "" {
-		c.logger.InfoContext(ctx, "skipping database with disabled root",
-			"database_id", databaseID,
-			"root_id", rootID)
-		return 0, nil
-	}
-
-	filesWritten := 0
-
-	// Fetch database metadata
-	fetchDBStart := time.Now()
+// buildDatabaseParams fetches database metadata and pages, and builds writeAndRegisterParams.
+func (c *Crawler) buildDatabaseParams(
+	ctx context.Context, databaseID, folder string, fetchStart time.Time,
+) (*writeAndRegisterParams, string, error) {
 	database, err := c.client.GetDatabase(ctx, databaseID)
-	fetchDBDuration := time.Since(fetchDBStart)
+	fetchDBDuration := time.Since(fetchStart)
 	if err != nil {
-		return 0, fmt.Errorf("fetch database: %w", err)
+		return nil, folder, fmt.Errorf("fetch database: %w", err)
 	}
 	c.logger.DebugContext(ctx, "fetched database metadata",
 		"database_id", databaseID,
 		"duration_ms", fetchDBDuration.Milliseconds())
 
-	// Enrich user data for created_by and last_edited_by
-	c.enrichDatabaseUsers(ctx, database)
+	c.enrichUsers(ctx, &database.CreatedBy, &database.LastEditedBy)
 
-	// For new databases (not in registry), verify they belong to an enabled root before processing.
-	// This prevents saving databases from webhooks that don't belong to any root.md entry.
-	existingReg, _ := c.loadPageRegistry(ctx, databaseID)
-	if existingReg == nil {
-		// Convert database to a page-like object for parent chain tracing
-		dbAsPage := &notion.Page{
-			ID:     database.ID,
-			Parent: database.Parent,
-		}
-		var detectedFolder string
-		var foundRoot bool
-		_, detectedFolder, foundRoot, err = c.traceParentChain(ctx, dbAsPage, folder)
-		if err != nil {
-			c.logger.WarnContext(ctx, "failed to trace parent chain for new database",
-				"database_id", databaseID,
-				"error", err)
-			return 0, nil
-		}
-		if !foundRoot {
-			c.logger.InfoContext(ctx, "skipping database not under any root in root.md",
-				"database_id", databaseID,
-				"title", database.Title)
-			return 0, nil
-		}
-		// Update folder from parent chain if different from default
-		if folder != detectedFolder {
-			c.logger.DebugContext(ctx, "using folder from parent chain",
-				"database_id", databaseID,
-				"requested_folder", folder,
-				"detected_folder", detectedFolder)
-			folder = detectedFolder
-		}
-	}
-
-	// Query all pages in the database
 	queryDBStart := time.Now()
 	dbPages, err := c.client.QueryDatabase(ctx, databaseID)
 	queryDBDuration := time.Since(queryDBStart)
 	if err != nil {
-		return 0, fmt.Errorf("query database: %w", err)
+		return nil, folder, fmt.Errorf("query database: %w", err)
 	}
 	c.logger.DebugContext(ctx, "queried database pages",
 		"database_id", databaseID,
 		"page_count", len(dbPages),
 		"duration_ms", queryDBDuration.Milliseconds())
 
-	// Determine parent (resolving block parent if needed)
-	blockRes := c.resolveBlockParentWithLogging(ctx, databaseID, "database_id", database.Parent.BlockID, database.Parent)
-	parentID := blockRes.parentID
-	isRoot := blockRes.isRoot
-
-	// Resolve and fetch parent if needed
-	parentResult, err := c.resolveAndFetchParent(
-		ctx, databaseID, "database_id", parentID, expectedParentID, folder, isInit, isRoot)
-	if err != nil {
-		return 0, err
-	}
-	parentID = parentResult.parentID
-	isRoot = parentResult.isRoot
-	filesWritten += parentResult.filesWritten
-
-	// Compute file path
-	// For databases, we compute path similar to pages
 	dbID := normalizePageID(databaseID)
-
-	// Check page registry for existing path (stability)
-	var filePath string
-	// Try to use existing registry path for stability
-	if reg, err := c.loadPageRegistry(ctx, dbID); err == nil && reg.FilePath != "" {
-		c.logger.DebugContext(ctx, "using registry path for stability",
-			"database_id", dbID,
-			"path", reg.FilePath)
-		filePath = reg.FilePath
-	} else {
-		filePath = c.computeDatabasePath(ctx, database, dbID, folder, isRoot, parentID)
-	}
-
-	now := time.Now()
-
-	// Calculate download duration (API fetch time)
 	downloadDuration := fetchDBDuration + queryDBDuration
 
-	// Convert to markdown
-	convertStart := time.Now()
-	content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
-		Folder:           folder,
-		PageTitle:        database.GetTitle(),
-		FilePath:         filePath,
-		LastSynced:       now,
-		NotionType:       "database",
-		IsRoot:           isRoot,
-		ParentID:         parentID,
-		FileProcessor:    c.makeFileProcessor(ctx, filePath, dbID),
-		DownloadDuration: downloadDuration,
-	})
-	convertDuration := time.Since(convertStart)
-
-	// Compute content hash
-	hash := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hash[:])
-
-	// Write file
-	writeStart := time.Now()
-	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return 0, fmt.Errorf("write database: %w", err)
-	}
-	writeDuration := time.Since(writeStart)
-	filesWritten++ // Count this file write
-
-	totalDuration := time.Since(startTime)
-	c.logger.InfoContext(ctx, "downloaded database",
-		"database_id", databaseID,
-		"title", database.GetTitle(),
-		"path", filePath,
-		"pages_count", len(dbPages),
-		"total_ms", totalDuration.Milliseconds(),
-		"fetch_db_ms", fetchDBDuration.Milliseconds(),
-		"query_db_ms", queryDBDuration.Milliseconds(),
-		"convert_ms", convertDuration.Milliseconds(),
-		"write_ms", writeDuration.Milliseconds())
-
-	// Collect child page IDs from database
 	var children []string
 	for i := range dbPages {
-		childID := normalizePageID(dbPages[i].ID)
-		children = append(children, childID)
+		children = append(children, normalizePageID(dbPages[i].ID))
 	}
 
-	// Preserve IsRoot and Enabled from existing registry (set by ReconcileRootMd)
-	if existingReg != nil && existingReg.IsRoot {
-		isRoot = true
-		enabled = existingReg.Enabled
-	}
-
-	// Save page registry (treat database as a page in registry)
-	if err := c.savePageRegistry(ctx, &PageRegistry{
-		NtnsyncVersion: version.Version,
-		ID:             dbID,
-		Type:           "database",
-		Folder:         folder,
-		FilePath:       filePath,
-		Title:          database.GetTitle(),
-		LastEdited:     database.LastEditedTime,
-		LastSynced:     now,
-		IsRoot:         isRoot,
-		Enabled:        enabled,
-		ParentID:       parentID,
-		Children:       children,
-		ContentHash:    contentHash,
-	}); err != nil {
-		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
-	}
-
-	// Queue database pages if they don't exist yet
-	var newChildren []string
-	for _, childID := range children {
-		if _, err := c.loadPageRegistry(ctx, childID); err != nil {
-			// Child doesn't exist yet
-			newChildren = append(newChildren, childID)
-		}
-	}
-
-	if len(newChildren) > 0 {
-		entry := queue.Entry{
-			Type:     queueTypeInit,
-			Folder:   folder,
-			PageIDs:  newChildren,
-			ParentID: dbID, // Set parent ID for proper folder structure
-		}
-
-		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
-			c.logger.WarnContext(ctx, "failed to queue database pages", "error", err)
-		} else {
-			c.logger.DebugContext(ctx, "queued database pages", "count", len(newChildren), "parent_id", dbID)
-		}
-	}
-
-	return filesWritten, nil
+	return &writeAndRegisterParams{
+		itemID:   dbID,
+		itemType: "database",
+		title:    database.GetTitle(),
+		convert: func(filePath string, isRoot bool, parentID string) []byte {
+			return c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
+				Folder:           folder,
+				PageTitle:        database.GetTitle(),
+				FilePath:         filePath,
+				LastSynced:       time.Now(),
+				NotionType:       "database",
+				IsRoot:           isRoot,
+				ParentID:         parentID,
+				FileProcessor:    c.makeFileProcessor(ctx, filePath, dbID),
+				DownloadDuration: downloadDuration,
+			})
+		},
+		lastEdited:       database.LastEditedTime,
+		parent:           database.Parent,
+		downloadDuration: downloadDuration,
+		children:         children,
+	}, folder, nil
 }

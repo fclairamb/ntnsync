@@ -28,30 +28,7 @@ func (c *Crawler) computeParentDir(ctx context.Context, parentID, defaultFolder 
 	return filepath.Join(parentDir, parentBase)
 }
 
-// computeDatabasePath computes the file path for a new database.
-func (c *Crawler) computeDatabasePath(
-	ctx context.Context, database *notion.Database, dbID, folder string, isRoot bool, parentID string,
-) string {
-	title := converter.SanitizeFilename(database.GetTitle())
-	if title == "" {
-		title = defaultUntitledStr
-	}
-
-	var dir string
-	if isRoot {
-		// Root database: $folder/$title.md
-		dir = folder
-	} else {
-		// Child database: $folder/$parent-dir/$title.md
-		dir = c.computeParentDir(ctx, parentID, folder)
-	}
-
-	// Check for conflicts and add short ID if needed
-	filename := c.resolveFilenameConflict(ctx, folder, dir, title, dbID)
-	return filepath.Join(dir, filename+".md")
-}
-
-// computeFilePath determines the file path for a page.
+// computeFilePath determines the file path for a page or database.
 // CRITICAL: Enforces file path stability - existing paths are never changed.
 // resolvedParentID is the parent page/database ID (already resolved from blocks).
 func (c *Crawler) computeFilePath(

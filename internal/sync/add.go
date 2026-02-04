@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -16,33 +17,121 @@ import (
 	"github.com/fclairamb/ntnsync/internal/version"
 )
 
+// initForAdd validates the folder, ensures a transaction, creates the state directory, and loads state.
+func (c *Crawler) initForAdd(ctx context.Context, folder string) error {
+	if err := validateFolderName(folder); err != nil {
+		return fmt.Errorf("invalid folder name: %w", err)
+	}
+
+	if err := c.EnsureTransaction(ctx); err != nil {
+		return fmt.Errorf("ensure transaction: %w", err)
+	}
+
+	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
+		return fmt.Errorf("create state dir: %w", err)
+	}
+
+	if err := c.loadState(ctx); err != nil {
+		c.logger.WarnContext(ctx, "could not load state, starting fresh", "error", err)
+	}
+
+	return nil
+}
+
+// finalizeAddParams holds the parameters for finalizeAdd.
+type finalizeAddParams struct {
+	itemID      string
+	itemType    string // "page" or "database"
+	title       string
+	folder      string
+	filePath    string
+	lastEdited  time.Time
+	content     []byte
+	children    []string
+	forceUpdate bool
+}
+
+// finalizeAdd handles the shared tail of AddDatabase and AddRootPage:
+// add folder to state, mkdir, write file, save state, save registry, queue children.
+func (c *Crawler) finalizeAdd(ctx context.Context, params *finalizeAddParams) error {
+	c.state.AddFolder(params.folder)
+
+	if err := c.tx.Mkdir(ctx, params.folder); err != nil {
+		return fmt.Errorf("create folder dir: %w", err)
+	}
+
+	hash := sha256.Sum256(params.content)
+	contentHash := hex.EncodeToString(hash[:])
+
+	if err := c.tx.Write(ctx, params.filePath, params.content); err != nil {
+		return fmt.Errorf("write %s: %w", params.itemType, err)
+	}
+
+	logKey := params.itemType + "_id"
+	c.logger.InfoContext(ctx, "downloaded "+params.itemType,
+		logKey, params.itemID,
+		"title", params.title,
+		"path", params.filePath)
+
+	if err := c.saveState(ctx); err != nil {
+		return fmt.Errorf("save state: %w", err)
+	}
+
+	now := time.Now()
+
+	if err := c.savePageRegistry(ctx, &PageRegistry{
+		NtnsyncVersion: version.Version,
+		ID:             params.itemID,
+		Type:           params.itemType,
+		Folder:         params.folder,
+		FilePath:       params.filePath,
+		Title:          params.title,
+		LastEdited:     params.lastEdited,
+		LastSynced:     now,
+		IsRoot:         true,
+		Enabled:        true,
+		ParentID:       "",
+		Children:       params.children,
+		ContentHash:    contentHash,
+	}); err != nil {
+		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
+	}
+
+	if len(params.children) > 0 {
+		queueType := queueTypeInit
+		if params.forceUpdate {
+			queueType = "update"
+		}
+
+		entry := queue.Entry{
+			Type:     queueType,
+			Folder:   params.folder,
+			PageIDs:  params.children,
+			ParentID: params.itemID,
+		}
+
+		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
+			return fmt.Errorf("create queue entry: %w", err)
+		}
+
+		c.logger.InfoContext(ctx, "queued child "+params.itemType+"s",
+			"count", len(params.children),
+			"type", queueType,
+			"parent_id", params.itemID)
+	}
+
+	return nil
+}
+
 // AddDatabase adds all pages from a database to a folder.
-//
-//nolint:funlen // Complex database initialization logic
 func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, forceUpdate bool) error {
 	c.logger.InfoContext(ctx, "adding database",
 		"database_id", databaseID,
 		"folder", folder,
 		"force_update", forceUpdate)
 
-	// Validate folder name
-	if err := validateFolderName(folder); err != nil {
-		return fmt.Errorf("invalid folder name: %w", err)
-	}
-
-	// Ensure transaction is available
-	if err := c.EnsureTransaction(ctx); err != nil {
-		return fmt.Errorf("ensure transaction: %w", err)
-	}
-
-	// Create state directory if needed
-	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
-		return fmt.Errorf("create state dir: %w", err)
-	}
-
-	// Load existing state
-	if err := c.loadState(ctx); err != nil {
-		c.logger.WarnContext(ctx, "could not load state, starting fresh", "error", err)
+	if err := c.initForAdd(ctx, folder); err != nil {
+		return err
 	}
 
 	// Fetch the database metadata
@@ -66,140 +155,56 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 		return nil
 	}
 
-	// Add folder to state
-	c.state.AddFolder(folder)
-
-	// Create folder directory
-	if err := c.tx.Mkdir(ctx, folder); err != nil {
-		return fmt.Errorf("create folder dir: %w", err)
-	}
-
-	// Save the database itself as a markdown file (as a root page)
 	dbID := normalizePageID(databaseID)
 	title := converter.SanitizeFilename(database.GetTitle())
 	if title == "" {
 		title = defaultUntitledStr
 	}
 
-	// Database is always a root page when added directly
 	filePath := filepath.Join(folder, title+".md")
 
-	now := time.Now()
-
-	// Convert database to markdown
 	content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     database.GetTitle(),
 		FilePath:      filePath,
-		LastSynced:    now,
+		LastSynced:    time.Now(),
 		NotionType:    "database",
 		IsRoot:        true,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, dbID),
 	})
 
-	// Compute content hash
-	hash := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hash[:])
-
-	// Write the database file
-	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return fmt.Errorf("write database: %w", err)
-	}
-
-	c.logger.InfoContext(ctx, "downloaded database",
-		"database_id", databaseID,
-		"title", database.GetTitle(),
-		"path", filePath,
-		"pages_count", len(dbPages))
-
-	// Collect page IDs to queue
-	var pageIDs []string
+	var children []string
 	for i := range dbPages {
 		dbPage := &dbPages[i]
 		pageID := normalizePageID(dbPage.ID)
-		pageIDs = append(pageIDs, pageID)
+		children = append(children, pageID)
 		c.logger.DebugContext(ctx, "found database page",
 			"page_id", pageID,
 			"title", dbPage.Title())
 	}
 
-	// Save state
-	if err := c.saveState(ctx); err != nil {
-		return fmt.Errorf("save state: %w", err)
-	}
-
-	// Save database registry
-	if err := c.savePageRegistry(ctx, &PageRegistry{
-		NtnsyncVersion: version.Version,
-		ID:             dbID,
-		Type:           "database",
-		Folder:         folder,
-		FilePath:       filePath,
-		Title:          database.GetTitle(),
-		LastEdited:     database.LastEditedTime,
-		LastSynced:     now,
-		IsRoot:         true,
-		Enabled:        true,
-		ParentID:       "",
-		Children:       pageIDs,
-		ContentHash:    contentHash,
-	}); err != nil {
-		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
-	}
-
-	// Create queue entry for all pages with database as parent
-	queueType := queueTypeInit
-	if forceUpdate {
-		queueType = "update"
-	}
-
-	entry := queue.Entry{
-		Type:     queueType,
-		Folder:   folder,
-		PageIDs:  pageIDs,
-		ParentID: dbID, // Set database as parent for proper folder structure
-	}
-
-	if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
-		return fmt.Errorf("create queue entry: %w", err)
-	}
-
-	c.logger.InfoContext(ctx, "queued database pages",
-		"database", database.GetTitle(),
-		"count", len(pageIDs),
-		"type", queueType,
-		"parent_id", dbID)
-
-	return nil
+	return c.finalizeAdd(ctx, &finalizeAddParams{
+		itemID:      dbID,
+		itemType:    "database",
+		title:       database.GetTitle(),
+		folder:      folder,
+		filePath:    filePath,
+		lastEdited:  database.LastEditedTime,
+		content:     content,
+		children:    children,
+		forceUpdate: forceUpdate,
+	})
 }
 
 // AddRootPage adds a page as a root page in a folder and queues it for syncing.
-//
-//nolint:funlen // Complex root page initialization logic
 func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceUpdate bool) error {
 	c.logger.InfoContext(ctx, "adding root page",
 		"page_id", pageID,
 		"folder", folder,
 		"force_update", forceUpdate)
 
-	// Validate folder name
-	if err := validateFolderName(folder); err != nil {
-		return fmt.Errorf("invalid folder name: %w", err)
-	}
-
-	// Ensure transaction is available
-	if err := c.EnsureTransaction(ctx); err != nil {
-		return fmt.Errorf("ensure transaction: %w", err)
-	}
-
-	// Create state directory if needed
-	if err := c.tx.Mkdir(ctx, stateDir); err != nil {
-		return fmt.Errorf("create state dir: %w", err)
-	}
-
-	// Load existing state
-	if err := c.loadState(ctx); err != nil {
-		c.logger.WarnContext(ctx, "could not load state, starting fresh", "error", err)
+	if err := c.initForAdd(ctx, folder); err != nil {
+		return err
 	}
 
 	// Fetch the page from Notion
@@ -214,96 +219,31 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 		return fmt.Errorf("fetch blocks: %w", err)
 	}
 
-	// Add folder to state
-	c.state.AddFolder(folder)
-
-	// Compute file path (check for existing path first for stability)
 	filePath := c.computeFilePath(ctx, page, folder, true, "")
 
-	// Create folder directory
-	if err := c.tx.Mkdir(ctx, folder); err != nil {
-		return fmt.Errorf("create folder dir: %w", err)
-	}
-
-	now := time.Now()
-
-	// Convert page to markdown
 	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     page.Title(),
 		FilePath:      filePath,
-		LastSynced:    now,
+		LastSynced:    time.Now(),
 		NotionType:    "page",
 		IsRoot:        true,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
 	})
 
-	// Compute content hash
-	hash := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hash[:])
-
-	// Write the file
-	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return fmt.Errorf("write page: %w", err)
-	}
-
-	c.logger.InfoContext(ctx, "downloaded root page",
-		"page_id", pageID,
-		"title", page.Title(),
-		"path", filePath)
-
-	// Discover child pages
 	children := c.findChildPages(blocks)
 
-	// Save state
-	if err := c.saveState(ctx); err != nil {
-		return fmt.Errorf("save state: %w", err)
-	}
-
-	// Save page registry
-	if err := c.savePageRegistry(ctx, &PageRegistry{
-		NtnsyncVersion: version.Version,
-		ID:             pageID,
-		Type:           "page",
-		Folder:         folder,
-		FilePath:       filePath,
-		Title:          page.Title(),
-		LastEdited:     page.LastEditedTime,
-		LastSynced:     now,
-		IsRoot:         true,
-		Enabled:        true,
-		ParentID:       "",
-		Children:       children,
-		ContentHash:    contentHash,
-	}); err != nil {
-		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
-	}
-
-	// Create queue entry for child pages
-	if len(children) > 0 {
-		queueType := queueTypeInit
-		if forceUpdate {
-			queueType = "update"
-		}
-
-		entry := queue.Entry{
-			Type:     queueType,
-			Folder:   folder,
-			PageIDs:  children,
-			ParentID: pageID, // Set parent ID for proper folder structure
-		}
-
-		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
-			return fmt.Errorf("create queue entry: %w", err)
-		}
-
-		c.logger.InfoContext(ctx, "queued child pages",
-			"count", len(children),
-			"type", queueType,
-			"parent_id", pageID)
-	}
-
-	return nil
+	return c.finalizeAdd(ctx, &finalizeAddParams{
+		itemID:      pageID,
+		itemType:    "page",
+		title:       page.Title(),
+		folder:      folder,
+		filePath:    filePath,
+		lastEdited:  page.LastEditedTime,
+		content:     content,
+		children:    children,
+		forceUpdate: forceUpdate,
+	})
 }
 
 // GetPage fetches a single page and places it in the correct location based on its parent hierarchy.
@@ -522,10 +462,92 @@ func (c *Crawler) resolveBlockToPage(ctx context.Context, blockID string) (strin
 	return "", "", apperrors.ErrMaxDepthExceeded
 }
 
+// resolveParentID resolves the parent ID from a notion.Parent, handling block parents.
+func (c *Crawler) resolveParentID(ctx context.Context, itemID, logKey string, parent notion.Parent) string {
+	if parent.Type == parentTypeBlockID {
+		resolvedID, resolvedType, err := c.resolveBlockToPage(ctx, parent.BlockID)
+		if err != nil {
+			c.logger.WarnContext(ctx, "failed to resolve block parent",
+				logKey, itemID,
+				"block_id", parent.BlockID,
+				"error", err)
+			return ""
+		}
+		if resolvedType == parentTypeWorkspace {
+			return ""
+		}
+		return resolvedID
+	}
+	return normalizePageID(parent.ID())
+}
+
+// writeRegistryAndQueue writes content to a file, saves the page registry, and queues children.
+func (c *Crawler) writeRegistryAndQueue(
+	ctx context.Context, filePath, itemID, itemType, title, folder, parentID string,
+	lastEdited time.Time, isRoot bool, content []byte, children []string,
+) error {
+	// Create directory if needed
+	dir := filepath.Dir(filePath)
+	if err := c.tx.Mkdir(ctx, dir); err != nil {
+		return fmt.Errorf("create dir %s: %w", dir, err)
+	}
+
+	// Compute content hash
+	hash := sha256.Sum256(content)
+	contentHash := hex.EncodeToString(hash[:])
+
+	// Write the file
+	if err := c.tx.Write(ctx, filePath, content); err != nil {
+		return fmt.Errorf("write %s: %w", itemType, err)
+	}
+
+	logKey := itemType + "_id"
+	c.logger.InfoContext(ctx, "saved "+itemType,
+		logKey, itemID,
+		"title", title,
+		"path", filePath)
+
+	now := time.Now()
+
+	// Save page registry
+	if err := c.savePageRegistry(ctx, &PageRegistry{
+		NtnsyncVersion: version.Version,
+		ID:             itemID,
+		Type:           itemType,
+		Folder:         folder,
+		FilePath:       filePath,
+		Title:          title,
+		LastEdited:     lastEdited,
+		LastSynced:     now,
+		IsRoot:         isRoot,
+		ParentID:       parentID,
+		Children:       children,
+		ContentHash:    contentHash,
+	}); err != nil {
+		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
+	}
+
+	// Queue children for later syncing
+	if len(children) > 0 {
+		entry := queue.Entry{
+			Type:     queueTypeInit,
+			Folder:   folder,
+			PageIDs:  children,
+			ParentID: itemID,
+		}
+
+		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
+			c.logger.WarnContext(ctx, "failed to queue child pages", "error", err)
+		} else {
+			c.logger.DebugContext(ctx, "queued child pages", "count", len(children))
+		}
+	}
+
+	return nil
+}
+
 // savePageFromNotion fetches blocks and saves a page to the store.
 // Handles both regular pages and databases (when parent is a database).
-//
-//nolint:funlen // Complete page save logic with error handling
 func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, folder string, isRoot bool) error {
 	pageID := normalizePageID(page.ID)
 
@@ -540,237 +562,68 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 	blocks, err := c.client.GetAllBlockChildren(ctx, pageID, 0)
 	if err != nil && strings.Contains(err.Error(), "is a database, not a page") {
 		c.logger.DebugContext(ctx, "detected database, saving as database", "page_id", pageID)
-		return c.saveDatabaseFromNotion(ctx, pageID, folder, isRoot)
+
+		database, dbErr := c.client.GetDatabase(ctx, pageID)
+		if dbErr != nil {
+			return fmt.Errorf("fetch database: %w", dbErr)
+		}
+
+		dbPages, dbErr := c.client.QueryDatabase(ctx, pageID)
+		if dbErr != nil {
+			return fmt.Errorf("query database: %w", dbErr)
+		}
+
+		parentID := c.resolveParentID(ctx, pageID, "database_id", database.Parent)
+		syntheticPage := &notion.Page{
+			ID:     database.ID,
+			Parent: database.Parent,
+			Properties: notion.Properties{
+				"title": {Type: "title", Title: database.Title},
+			},
+		}
+		filePath := c.computeFilePath(ctx, syntheticPage, folder, isRoot, parentID)
+
+		content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
+			Folder:        folder,
+			PageTitle:     database.GetTitle(),
+			FilePath:      filePath,
+			LastSynced:    time.Now(),
+			NotionType:    "database",
+			IsRoot:        isRoot,
+			ParentID:      parentID,
+			FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
+		})
+
+		var children []string
+		for i := range dbPages {
+			children = append(children, normalizePageID(dbPages[i].ID))
+		}
+
+		return c.writeRegistryAndQueue(ctx, filePath, pageID, "database",
+			database.GetTitle(), folder, parentID, database.LastEditedTime, isRoot, content, children)
 	}
 	if err != nil {
 		return fmt.Errorf("fetch blocks: %w", err)
 	}
 
-	// Determine parent ID first (resolve blocks to containing page)
-	parentID := ""
-	if page.Parent.Type == parentTypeBlockID {
-		resolvedID, resolvedType, err := c.resolveBlockToPage(ctx, page.Parent.BlockID)
-		if err != nil {
-			c.logger.WarnContext(ctx, "failed to resolve block parent",
-				"page_id", pageID,
-				"block_id", page.Parent.BlockID,
-				"error", err)
-		} else if resolvedType != parentTypeWorkspace {
-			parentID = resolvedID
-		}
-	} else {
-		parentID = normalizePageID(page.Parent.ID())
-	}
-
-	// Compute file path (using resolved parent ID)
+	parentID := c.resolveParentID(ctx, pageID, "page_id", page.Parent)
 	filePath := c.computeFilePath(ctx, page, folder, isRoot, parentID)
 
-	// Create directory if needed
-	dir := filepath.Dir(filePath)
-	if err := c.tx.Mkdir(ctx, dir); err != nil {
-		return fmt.Errorf("create dir %s: %w", dir, err)
-	}
-
-	now := time.Now()
-
-	// Convert page to markdown
 	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
 		Folder:        folder,
 		PageTitle:     page.Title(),
 		FilePath:      filePath,
-		LastSynced:    now,
+		LastSynced:    time.Now(),
 		NotionType:    "page",
 		IsRoot:        isRoot,
 		ParentID:      parentID,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
 	})
 
-	// Compute content hash
-	hash := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hash[:])
-
-	// Write the file
-	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return fmt.Errorf("write page: %w", err)
-	}
-
-	c.logger.InfoContext(ctx, "saved page",
-		"page_id", pageID,
-		"title", page.Title(),
-		"path", filePath)
-
-	// Discover child pages
 	children := c.findChildPages(blocks)
 
-	// Save page registry
-	if err := c.savePageRegistry(ctx, &PageRegistry{
-		NtnsyncVersion: version.Version,
-		ID:             pageID,
-		Type:           "page",
-		Folder:         folder,
-		FilePath:       filePath,
-		Title:          page.Title(),
-		LastEdited:     page.LastEditedTime,
-		LastSynced:     now,
-		IsRoot:         isRoot,
-		ParentID:       parentID,
-		Children:       children,
-		ContentHash:    contentHash,
-	}); err != nil {
-		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
-	}
-
-	// Queue child pages for later syncing
-	if len(children) > 0 {
-		entry := queue.Entry{
-			Type:     queueTypeInit,
-			Folder:   folder,
-			PageIDs:  children,
-			ParentID: pageID,
-		}
-
-		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
-			c.logger.WarnContext(ctx, "failed to queue children", "error", err)
-		} else {
-			c.logger.DebugContext(ctx, "queued child pages", "count", len(children))
-		}
-	}
-
-	return nil
-}
-
-// saveDatabaseFromNotion fetches database metadata and pages, then saves as markdown.
-//
-//nolint:funlen // Complete database save logic with error handling
-func (c *Crawler) saveDatabaseFromNotion(ctx context.Context, databaseID, folder string, isRoot bool) error {
-	// Fetch the database metadata
-	database, err := c.client.GetDatabase(ctx, databaseID)
-	if err != nil {
-		return fmt.Errorf("fetch database: %w", err)
-	}
-
-	// Query all pages in the database
-	dbPages, err := c.client.QueryDatabase(ctx, databaseID)
-	if err != nil {
-		return fmt.Errorf("query database: %w", err)
-	}
-
-	dbID := normalizePageID(databaseID)
-
-	// Determine parent ID first (resolve blocks to containing page)
-	parentID := ""
-	if database.Parent.Type == parentTypeBlockID {
-		resolvedID, resolvedType, err := c.resolveBlockToPage(ctx, database.Parent.BlockID)
-		if err != nil {
-			c.logger.WarnContext(ctx, "failed to resolve block parent",
-				"database_id", dbID,
-				"block_id", database.Parent.BlockID,
-				"error", err)
-		} else if resolvedType != parentTypeWorkspace {
-			parentID = resolvedID
-		}
-	} else {
-		parentID = normalizePageID(database.Parent.ID())
-	}
-
-	// For databases, we use a similar approach to pages
-	// Create a synthetic page for path computation
-	syntheticPage := &notion.Page{
-		ID:             database.ID,
-		Parent:         database.Parent,
-		LastEditedTime: database.LastEditedTime,
-	}
-
-	// Set title property using the proper Property type
-	if len(database.Title) > 0 {
-		syntheticPage.Properties = notion.Properties{
-			"title": {
-				Type:  "title",
-				Title: database.Title,
-			},
-		}
-	}
-
-	// Compute file path (using resolved parent ID)
-	filePath := c.computeFilePath(ctx, syntheticPage, folder, isRoot, parentID)
-
-	// Create directory if needed
-	dir := filepath.Dir(filePath)
-	if err := c.tx.Mkdir(ctx, dir); err != nil {
-		return fmt.Errorf("create dir %s: %w", dir, err)
-	}
-
-	now := time.Now()
-
-	// Convert database to markdown
-	content := c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
-		Folder:        folder,
-		PageTitle:     database.GetTitle(),
-		FilePath:      filePath,
-		LastSynced:    now,
-		NotionType:    "database",
-		IsRoot:        isRoot,
-		ParentID:      parentID,
-		FileProcessor: c.makeFileProcessor(ctx, filePath, dbID),
-	})
-
-	// Compute content hash
-	hash := sha256.Sum256(content)
-	contentHash := hex.EncodeToString(hash[:])
-
-	// Write the file
-	if err := c.tx.Write(ctx, filePath, content); err != nil {
-		return fmt.Errorf("write database: %w", err)
-	}
-
-	c.logger.InfoContext(ctx, "saved database",
-		"database_id", dbID,
-		"title", database.GetTitle(),
-		"path", filePath,
-		"pages_count", len(dbPages))
-
-	// Collect page IDs (children)
-	var children []string
-	for i := range dbPages {
-		pageID := normalizePageID(dbPages[i].ID)
-		children = append(children, pageID)
-	}
-
-	// Save page registry
-	if err := c.savePageRegistry(ctx, &PageRegistry{
-		NtnsyncVersion: version.Version,
-		ID:             dbID,
-		Type:           "database",
-		Folder:         folder,
-		FilePath:       filePath,
-		Title:          database.GetTitle(),
-		LastEdited:     database.LastEditedTime,
-		LastSynced:     now,
-		IsRoot:         isRoot,
-		ParentID:       parentID,
-		Children:       children,
-		ContentHash:    contentHash,
-	}); err != nil {
-		c.logger.WarnContext(ctx, "failed to save database registry", "error", err)
-	}
-
-	// Queue database pages for later syncing
-	if len(children) > 0 {
-		entry := queue.Entry{
-			Type:     queueTypeInit,
-			Folder:   folder,
-			PageIDs:  children,
-			ParentID: dbID,
-		}
-
-		if _, err := c.queueManager.CreateEntry(ctx, entry); err != nil {
-			c.logger.WarnContext(ctx, "failed to queue database pages", "error", err)
-		} else {
-			c.logger.DebugContext(ctx, "queued database pages", "count", len(children))
-		}
-	}
-
-	return nil
+	return c.writeRegistryAndQueue(ctx, filePath, pageID, "page",
+		page.Title(), folder, parentID, page.LastEditedTime, isRoot, content, children)
 }
 
 // findChildPages extracts child page IDs from blocks.
@@ -783,7 +636,7 @@ func (c *Crawler) findChildPages(blocks []notion.Block) []string {
 			block := &blocks[i]
 			if block.Type == "child_page" && block.ChildPage != nil {
 				childID := normalizePageID(block.ID)
-				if !contains(children, childID) {
+				if !slices.Contains(children, childID) {
 					children = append(children, childID)
 				}
 			}

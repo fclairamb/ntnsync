@@ -2,7 +2,6 @@ package sync
 
 import (
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/fclairamb/ntnsync/internal/apperrors"
@@ -29,9 +28,4 @@ func validateFolderName(folder string) error {
 	}
 
 	return nil
-}
-
-// contains checks if a string slice contains a value.
-func contains(slice []string, val string) bool {
-	return slices.Contains(slice, val)
 }
