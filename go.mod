@@ -3,7 +3,7 @@ module github.com/fclairamb/ntnsync
 go 1.25
 
 require (
-	github.com/go-git/go-git/v5 v5.16.4
+	github.com/go-git/go-git/v5 v5.16.5
 	github.com/knadh/koanf/providers/env/v2 v2.0.0
 	github.com/knadh/koanf/v2 v2.3.2
 	github.com/urfave/cli/v3 v3.6.2
