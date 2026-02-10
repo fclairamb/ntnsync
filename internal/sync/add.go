@@ -626,7 +626,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 		page.Title(), folder, parentID, page.LastEditedTime, isRoot, content, children)
 }
 
-// findChildPages extracts child page IDs from blocks.
+// findChildPages extracts child page and child database IDs from blocks.
 func (c *Crawler) findChildPages(blocks []notion.Block) []string {
 	var children []string
 	var traverse func([]notion.Block)
@@ -635,6 +635,12 @@ func (c *Crawler) findChildPages(blocks []notion.Block) []string {
 		for i := range blocks {
 			block := &blocks[i]
 			if block.Type == "child_page" && block.ChildPage != nil {
+				childID := normalizePageID(block.ID)
+				if !slices.Contains(children, childID) {
+					children = append(children, childID)
+				}
+			}
+			if block.Type == "child_database" && block.ChildDatabase != nil {
 				childID := normalizePageID(block.ID)
 				if !slices.Contains(children, childID) {
 					children = append(children, childID)
