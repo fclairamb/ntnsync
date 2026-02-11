@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.1](https://github.com/fclairamb/ntnsync/compare/v0.6.0...v0.6.1) (2026-02-11)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v5 to v5.16.5 ([#45](https://github.com/fclairamb/ntnsync/issues/45)) ([53dff57](https://github.com/fclairamb/ntnsync/commit/53dff574826d4ba2b8befa2317251108d440b120))
+* **deps:** update module golang.org/x/text to v0.34.0 ([#46](https://github.com/fclairamb/ntnsync/issues/46)) ([115947f](https://github.com/fclairamb/ntnsync/commit/115947f5a155e236a8e6c0154c11da94f55daadc))
+* **sync:** discover child_database blocks during progressive indexing ([#48](https://github.com/fclairamb/ntnsync/issues/48)) ([12c2d92](https://github.com/fclairamb/ntnsync/commit/12c2d9220c144f863cd2a32a79c10c2b173afc62))
+
 ## [0.6.0](https://github.com/fclairamb/ntnsync/compare/v0.5.0...v0.6.0) (2026-02-04)
 
 
