@@ -121,7 +121,7 @@ jobs:
 
       - name: Build and push container images
         if: steps.check.outputs.should_build == 'true'
-        uses: docker/build-push-action@v6.19.1
+        uses: docker/build-push-action@v6.19.2
         with:
           context: .
           platforms: linux/amd64,linux/arm64
