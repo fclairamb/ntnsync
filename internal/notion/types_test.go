@@ -1,6 +1,9 @@
 package notion
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestUserFormat(t *testing.T) {
 	t.Parallel()
@@ -189,6 +192,129 @@ func TestParseRichTextToMarkdown_UserMention(t *testing.T) {
 			got := ParseRichTextToMarkdown(tt.richText)
 			if got != tt.want {
 				t.Errorf("ParseRichTextToMarkdown() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestAPIError_IsPermanent(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  APIError
+		want bool
+	}{
+		{
+			name: "404 object_not_found",
+			err:  APIError{Status: 404, Code: "object_not_found", Message: "Could not find block"},
+			want: true,
+		},
+		{
+			name: "401 unauthorized",
+			err:  APIError{Status: 401, Code: "unauthorized", Message: "API token is invalid"},
+			want: true,
+		},
+		{
+			name: "403 restricted_resource",
+			err:  APIError{Status: 403, Code: "restricted_resource", Message: "Not allowed"},
+			want: true,
+		},
+		{
+			name: "400 validation_error",
+			err:  APIError{Status: 400, Code: "validation_error", Message: "is a block, not a page"},
+			want: true,
+		},
+		{
+			name: "400 invalid_json",
+			err:  APIError{Status: 400, Code: "invalid_json", Message: "bad json"},
+			want: false,
+		},
+		{
+			name: "429 rate_limited",
+			err:  APIError{Status: 429, Code: "rate_limited", Message: "Rate limited"},
+			want: false,
+		},
+		{
+			name: "500 internal_server_error",
+			err:  APIError{Status: 500, Code: "internal_server_error", Message: "Internal error"},
+			want: false,
+		},
+		{
+			name: "502 bad gateway",
+			err:  APIError{Status: 502, Code: "", Message: "Bad Gateway"},
+			want: false,
+		},
+		{
+			name: "503 service_unavailable",
+			err:  APIError{Status: 503, Code: "service_unavailable", Message: "Service unavailable"},
+			want: false,
+		},
+		{
+			name: "409 conflict_error",
+			err:  APIError{Status: 409, Code: "conflict_error", Message: "Conflict"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tt.err.IsPermanent(); got != tt.want {
+				t.Errorf("APIError{Status: %d, Code: %q}.IsPermanent() = %v, want %v",
+					tt.err.Status, tt.err.Code, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsPermanentError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "direct permanent error",
+			err:  &APIError{Status: 404, Code: "object_not_found", Message: "not found"},
+			want: true,
+		},
+		{
+			name: "wrapped permanent error",
+			err:  fmt.Errorf("fetch page: %w", &APIError{Status: 404, Code: "object_not_found", Message: "not found"}),
+			want: true,
+		},
+		{
+			name: "double wrapped permanent error",
+			err:  fmt.Errorf("process: %w", fmt.Errorf("fetch page: %w", &APIError{Status: 404, Code: "object_not_found", Message: "not found"})),
+			want: true,
+		},
+		{
+			name: "wrapped transient error",
+			err:  fmt.Errorf("fetch page: %w", &APIError{Status: 500, Code: "internal_server_error", Message: "oops"}),
+			want: false,
+		},
+		{
+			name: "non-API error",
+			err:  fmt.Errorf("network timeout"),
+			want: false,
+		},
+		{
+			name: "nil error",
+			err:  nil,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := IsPermanentError(tt.err); got != tt.want {
+				t.Errorf("IsPermanentError(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

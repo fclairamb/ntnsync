@@ -67,6 +67,7 @@ func (c *Crawler) ProcessQueueWithCallback(
 
 	totalProcessed := 0
 	totalSkipped := 0
+	totalDropped := 0
 	totalFilesWritten := 0
 	totalQueueFilesProcessed := 0
 	startTime := time.Now()
@@ -172,6 +173,7 @@ func (c *Crawler) ProcessQueueWithCallback(
 
 		totalProcessed = stats.totalProcessed
 		totalSkipped = stats.totalSkipped
+		totalDropped += stats.totalDropped
 		totalFilesWritten = stats.totalFilesWritten
 
 		// Update or delete queue entry based on remaining pages
@@ -201,6 +203,7 @@ func (c *Crawler) ProcessQueueWithCallback(
 	logAttrs := []any{
 		"processed", totalProcessed,
 		"skipped", totalSkipped,
+		"dropped", totalDropped,
 		"files_written", totalFilesWritten,
 		"queue_files", totalQueueFilesProcessed,
 		"duration_ms", time.Since(startTime).Milliseconds(),
@@ -263,6 +266,7 @@ func (c *Crawler) updateOrDeleteQueueEntry(
 type queueProcessingStats struct {
 	totalProcessed    int
 	totalSkipped      int
+	totalDropped      int // pages dropped due to permanent errors
 	totalFilesWritten int
 }
 
@@ -291,7 +295,13 @@ func (c *Crawler) processNewFormatEntry(
 
 		filesCount, err := c.processPage(ctx, pageID, entry.Folder, entry.Type == queueTypeInit, entry.ParentID)
 		if err != nil {
-			c.logger.ErrorContext(ctx, "failed to process page", "page_id", pageID, "error", err)
+			if notion.IsPermanentError(err) {
+				c.logger.WarnContext(ctx, "dropping page from queue (permanent error)",
+					"page_id", pageID, "error", err)
+				stats.totalDropped++
+				continue
+			}
+			c.logger.ErrorContext(ctx, "failed to process page (will retry)", "page_id", pageID, "error", err)
 			remaining = append(remaining, *queuePage)
 			continue
 		}
@@ -337,7 +347,13 @@ func (c *Crawler) processLegacyFormatEntry(
 
 		filesCount, err := c.processPage(ctx, pageID, entry.Folder, entry.Type == queueTypeInit, entry.ParentID)
 		if err != nil {
-			c.logger.ErrorContext(ctx, "failed to process page", "page_id", pageID, "error", err)
+			if notion.IsPermanentError(err) {
+				c.logger.WarnContext(ctx, "dropping page from queue (permanent error)",
+					"page_id", pageID, "error", err)
+				stats.totalDropped++
+				continue
+			}
+			c.logger.ErrorContext(ctx, "failed to process page (will retry)", "page_id", pageID, "error", err)
 			remaining = append(remaining, pageID)
 			continue
 		}

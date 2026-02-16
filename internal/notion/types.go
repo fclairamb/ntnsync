@@ -3,6 +3,7 @@ package notion
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -742,4 +743,26 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	return e.Message
+}
+
+// IsPermanent returns true if this error will never resolve by retrying.
+// These are errors where the resource doesn't exist, isn't shared with the
+// integration, or is the wrong type.
+func (e *APIError) IsPermanent() bool {
+	switch e.Status {
+	case 401, 403, 404:
+		return true
+	case 400:
+		return e.Code == "validation_error"
+	}
+	return false
+}
+
+// IsPermanentError checks if an error (possibly wrapped) is a permanent Notion API error.
+func IsPermanentError(err error) bool {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.IsPermanent()
+	}
+	return false
 }
