@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -750,9 +751,9 @@ func (e *APIError) Error() string {
 // integration, or is the wrong type.
 func (e *APIError) IsPermanent() bool {
 	switch e.Status {
-	case 401, 403, 404:
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
 		return true
-	case 400:
+	case http.StatusBadRequest:
 		return e.Code == "validation_error"
 	}
 	return false

@@ -1,9 +1,12 @@
 package notion
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 )
+
+var errNetworkTimeout = errors.New("network timeout")
 
 func TestUserFormat(t *testing.T) {
 	t.Parallel()
@@ -299,7 +302,7 @@ func TestIsPermanentError(t *testing.T) {
 		},
 		{
 			name: "non-API error",
-			err:  fmt.Errorf("network timeout"),
+			err:  errNetworkTimeout,
 			want: false,
 		},
 		{
