@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.2](https://github.com/fclairamb/ntnsync/compare/v0.6.1...v0.6.2) (2026-02-17)
+
+
+### Bug Fixes
+
+* **sync:** drop queue entries with permanent Notion API errors ([#55](https://github.com/fclairamb/ntnsync/issues/55)) ([5ffbf1a](https://github.com/fclairamb/ntnsync/commit/5ffbf1ac1f23d6e1b35653d07c417f1a71fe5b22))
+
 ## [0.6.1](https://github.com/fclairamb/ntnsync/compare/v0.6.0...v0.6.1) (2026-02-11)
 
 
