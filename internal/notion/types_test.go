@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"github.com/fclairamb/ntnsync/internal/apperrors"
 )
 
 var errNetworkTimeout = errors.New("network timeout")
@@ -309,6 +311,11 @@ func TestIsPermanentError(t *testing.T) {
 			name: "nil error",
 			err:  nil,
 			want: false,
+		},
+		{
+			name: "ErrNoDataSources wrapped",
+			err:  fmt.Errorf("fetch database: database abc: %w", apperrors.ErrNoDataSources),
+			want: true,
 		},
 	}
 
