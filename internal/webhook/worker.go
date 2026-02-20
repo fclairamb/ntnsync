@@ -14,7 +14,7 @@ import (
 // SyncWorker processes queued items in the background.
 type SyncWorker struct {
 	crawler      *sync.Crawler
-	localStore   *store.LocalStore
+	store        store.Store
 	remoteConfig *store.RemoteConfig
 	logger       *slog.Logger
 	syncDelay    time.Duration
@@ -35,14 +35,14 @@ func WithSyncDelay(d time.Duration) SyncWorkerOption {
 // NewSyncWorker creates a new sync worker.
 func NewSyncWorker(
 	crawler *sync.Crawler,
-	localStore *store.LocalStore,
+	storeInst store.Store,
 	remoteConfig *store.RemoteConfig,
 	logger *slog.Logger,
 	opts ...SyncWorkerOption,
 ) *SyncWorker {
 	worker := &SyncWorker{
 		crawler:      crawler,
-		localStore:   localStore,
+		store:        storeInst,
 		remoteConfig: remoteConfig,
 		logger:       logger,
 		notify:       make(chan struct{}, 1),
@@ -192,7 +192,7 @@ func (w *SyncWorker) pushWithRetry(ctx context.Context) error {
 			}
 		}
 
-		if err := w.localStore.Push(ctx); err != nil {
+		if err := w.store.Push(ctx); err != nil {
 			lastErr = err
 			w.logger.WarnContext(ctx, "push failed",
 				"attempt", attempt+1,

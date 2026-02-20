@@ -47,7 +47,7 @@ func createTestWorker(t *testing.T, opts ...SyncWorkerOption) *SyncWorker {
 	// Create worker with minimal setup for notification testing
 	worker := &SyncWorker{
 		crawler:      nil, // Not used in notification tests
-		localStore:   nil, // Not used in notification tests
+		store:        nil, // Not used in notification tests
 		remoteConfig: nil, // No commits in tests
 		logger:       logger,
 		notify:       make(chan struct{}, 1),

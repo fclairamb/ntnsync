@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/knadh/koanf/providers/env/v2"
@@ -382,20 +383,12 @@ func syncCommand() *cli.Command {
 				return err
 			}
 
-			// Get local store for remote operations
-			localStore, ok := storeInst.(*store.LocalStore)
-			if !ok {
-				return apperrors.ErrNotLocalStore
-			}
-
 			// Get remote config for commit/push settings
-			remoteConfig := localStore.RemoteConfig()
+			remoteConfig := storeRemoteConfig(storeInst)
 
 			// Pull from remote before processing (if remote is configured)
-			if localStore.IsRemoteEnabled() {
-				if pullErr := localStore.Pull(ctx); pullErr != nil {
-					return fmt.Errorf("pull from remote: %w", pullErr)
-				}
+			if err = storePull(ctx, storeInst); err != nil {
+				return fmt.Errorf("pull from remote: %w", err)
 			}
 
 			// Create crawler
@@ -414,7 +407,7 @@ func syncCommand() *cli.Command {
 				err = crawler.ProcessQueueWithCallback(ctx, folder, maxPages, maxFiles, maxQueueFiles, maxTime,
 					func() error {
 						if tracker.shouldCommit() {
-							if commitErr := commitAndPush(ctx, crawler, localStore, remoteConfig, "periodic sync"); commitErr != nil {
+							if commitErr := commitAndPush(ctx, crawler, storeInst, remoteConfig, "periodic sync"); commitErr != nil {
 								return commitErr
 							}
 							tracker.markCommitted()
@@ -430,7 +423,7 @@ func syncCommand() *cli.Command {
 
 			// Final commit if enabled (via NTN_COMMIT or NTN_COMMIT_PERIOD)
 			if remoteConfig.IsCommitEnabled() {
-				if commitErr := commitAndPush(ctx, crawler, localStore, remoteConfig, "sync complete"); commitErr != nil {
+				if commitErr := commitAndPush(ctx, crawler, storeInst, remoteConfig, "sync complete"); commitErr != nil {
 					return commitErr
 				}
 			}
@@ -468,16 +461,13 @@ func listCommand() *cli.Command {
 			tree := cmd.Bool("tree")
 
 			// Setup store (no client needed for listing)
-			storePath := resolveStorePath(cmd)
-			remoteConfig := store.LoadRemoteConfigFromEnv()
-
-			localStore, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
+			storeInst, _, err := createStore(cmd)
 			if err != nil {
-				return fmt.Errorf("create store: %w", err)
+				return err
 			}
 
 			// Create crawler (no client needed for list)
-			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
+			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md
 			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
@@ -522,16 +512,13 @@ func statusCommand() *cli.Command {
 			folder := cmd.String("folder")
 
 			// Setup store (no client needed for status)
-			storePath := resolveStorePath(cmd)
-			remoteConfig := store.LoadRemoteConfigFromEnv()
-
-			localStore, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
+			storeInst, _, err := createStore(cmd)
 			if err != nil {
-				return fmt.Errorf("create store: %w", err)
+				return err
 			}
 
 			// Create crawler (no client needed for status)
-			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
+			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md
 			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
@@ -573,15 +560,12 @@ func reindexCommand() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			storePath := resolveStorePath(cmd)
-			remoteConfig := store.LoadRemoteConfigFromEnv()
-
-			st, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
+			storeInst, _, err := createStore(cmd)
 			if err != nil {
-				return fmt.Errorf("create store: %w", err)
+				return err
 			}
 
-			crawler := sync.NewCrawler(nil, st, sync.WithCrawlerLogger(slog.Default()))
+			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 			dryRun := cmd.Bool("dry-run")
 
 			if err := crawler.Reindex(ctx, dryRun); err != nil {
@@ -613,16 +597,13 @@ func cleanupCommand() *cli.Command {
 			dryRun := cmd.Bool("dry-run")
 
 			// Setup store (no client needed for cleanup)
-			storePath := resolveStorePath(cmd)
-			remoteConfig := store.LoadRemoteConfigFromEnv()
-
-			localStore, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
+			storeInst, remoteConfig, err := createStore(cmd)
 			if err != nil {
-				return fmt.Errorf("create store: %w", err)
+				return err
 			}
 
 			// Create crawler (no client needed for cleanup)
-			crawler := sync.NewCrawler(nil, localStore, sync.WithCrawlerLogger(slog.Default()))
+			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md first
 			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
@@ -640,7 +621,7 @@ func cleanupCommand() *cli.Command {
 
 			// Commit if enabled and not dry-run
 			if !dryRun && remoteConfig.IsCommitEnabled() && result.DeletedFiles > 0 {
-				if err := commitAndPush(ctx, crawler, localStore, remoteConfig, "cleanup orphaned pages"); err != nil {
+				if err := commitAndPush(ctx, crawler, storeInst, remoteConfig, "cleanup orphaned pages"); err != nil {
 					return err
 				}
 			}
@@ -747,16 +728,13 @@ func serveCommand() *cli.Command {
 			}
 
 			// Setup store (webhook server needs it for queue management)
-			storePath := resolveStorePath(cmd)
-			remoteConfig := store.LoadRemoteConfigFromEnv()
-
-			localStore, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
+			storeInst, remoteConfig, err := createStore(cmd)
 			if err != nil {
-				return fmt.Errorf("create store: %w", err)
+				return err
 			}
 
 			// Create queue manager
-			queueMgr := queue.NewManager(localStore, slog.Default())
+			queueMgr := queue.NewManager(storeInst, slog.Default())
 
 			// Create webhook config
 			cfg := &webhook.ServerConfig{
@@ -776,7 +754,7 @@ func serveCommand() *cli.Command {
 
 			if token != "" && cfg.AutoSync {
 				client := notion.NewClient(token)
-				crawler := sync.NewCrawler(client, localStore, sync.WithCrawlerLogger(slog.Default()))
+				crawler := sync.NewCrawler(client, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 				// Reconcile root.md at startup
 				if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
@@ -788,14 +766,14 @@ func serveCommand() *cli.Command {
 					opts = append(opts, webhook.WithSyncDelay(cfg.SyncDelay))
 				}
 
-				syncWorker = webhook.NewSyncWorker(crawler, localStore, remoteConfig, slog.Default(), opts...)
+				syncWorker = webhook.NewSyncWorker(crawler, storeInst, remoteConfig, slog.Default(), opts...)
 				slog.Info("auto-sync enabled", "sync_delay", cfg.SyncDelay)
 			} else if cfg.AutoSync {
 				slog.Warn("auto-sync disabled: NOTION_TOKEN not configured")
 			}
 
 			// Create and start server
-			server := webhook.NewServer(cfg, queueMgr, localStore, slog.Default(), syncWorker, remoteConfig)
+			server := webhook.NewServer(cfg, queueMgr, storeInst, slog.Default(), syncWorker, remoteConfig)
 
 			slog.Info("starting webhook server",
 				"port", cfg.Port,
@@ -807,6 +785,33 @@ func serveCommand() *cli.Command {
 			return server.Start(ctx)
 		},
 	}
+}
+
+// storeRemoteConfig returns the remote config from a store, supporting both LocalStore and SplitStore.
+func storeRemoteConfig(storeInst store.Store) *store.RemoteConfig {
+	switch typed := storeInst.(type) {
+	case *store.LocalStore:
+		return typed.RemoteConfig()
+	case *store.SplitStore:
+		return typed.RemoteConfig()
+	default:
+		return nil
+	}
+}
+
+// storePull pulls from remote if the store supports it.
+func storePull(ctx context.Context, storeInst store.Store) error {
+	switch typed := storeInst.(type) {
+	case *store.LocalStore:
+		if typed.IsRemoteEnabled() {
+			return typed.Pull(ctx)
+		}
+	case *store.SplitStore:
+		if typed.IsRemoteEnabled() {
+			return typed.Pull(ctx)
+		}
+	}
+	return nil
 }
 
 // resolveStorePath returns the store path from NTN_DIR env var or --store-path flag.
@@ -823,6 +828,50 @@ func resolveStorePath(cmd *cli.Command) string {
 	return storePath
 }
 
+// createStore creates a store from command flags.
+// If NTN_METADATA_BRANCH is set, returns a SplitStore that routes metadata
+// to a separate branch. Otherwise, returns a plain LocalStore.
+func createStore(cmd *cli.Command) (store.Store, *store.RemoteConfig, error) {
+	storePath := resolveStorePath(cmd)
+	remoteConfig := store.LoadRemoteConfigFromEnv()
+
+	contentStore, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
+	if err != nil {
+		return nil, nil, fmt.Errorf("create store: %w", err)
+	}
+
+	if remoteConfig.HasMetadataBranch() {
+		metadataPath := filepath.Join(storePath, ".notion-sync-repo")
+
+		metadataRemoteConfig := &store.RemoteConfig{
+			Storage:      remoteConfig.Storage,
+			URL:          remoteConfig.URL,
+			Password:     remoteConfig.Password,
+			Branch:       remoteConfig.MetadataBranch,
+			User:         remoteConfig.User,
+			Email:        remoteConfig.Email,
+			Commit:       remoteConfig.Commit,
+			CommitPeriod: remoteConfig.CommitPeriod,
+			Push:         remoteConfig.Push,
+		}
+
+		metadataStore, err := store.NewLocalStore(metadataPath,
+			store.WithRemoteConfig(metadataRemoteConfig),
+			store.WithLogger(slog.Default()))
+		if err != nil {
+			return nil, nil, fmt.Errorf("create metadata store: %w", err)
+		}
+
+		slog.Info("metadata branch enabled",
+			"branch", remoteConfig.MetadataBranch,
+			"path", metadataPath)
+
+		return store.NewSplitStore(contentStore, metadataStore), remoteConfig, nil
+	}
+
+	return contentStore, remoteConfig, nil
+}
+
 // setupClientAndStore creates the Notion client and store from command flags.
 func setupClientAndStore(cmd *cli.Command) (*notion.Client, store.Store, error) {
 	token := cmd.String("token")
@@ -833,16 +882,11 @@ func setupClientAndStore(cmd *cli.Command) (*notion.Client, store.Store, error) 
 		return nil, nil, apperrors.ErrNotionTokenRequired
 	}
 
-	storePath := resolveStorePath(cmd)
-
-	// Load remote config from environment
-	remoteConfig := store.LoadRemoteConfigFromEnv()
-
-	client := notion.NewClient(token)
-	st, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
+	storeInst, _, err := createStore(cmd)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create store: %w", err)
+		return nil, nil, err
 	}
 
-	return client, st, nil
+	client := notion.NewClient(token)
+	return client, storeInst, nil
 }
