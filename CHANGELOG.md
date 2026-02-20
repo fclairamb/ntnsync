@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.3](https://github.com/fclairamb/ntnsync/compare/v0.6.2...v0.6.3) (2026-02-20)
+
+
+### Bug Fixes
+
+* **sync:** treat ErrNoDataSources as permanent error to unstick queue ([#57](https://github.com/fclairamb/ntnsync/issues/57)) ([f0eb96f](https://github.com/fclairamb/ntnsync/commit/f0eb96fd11f574658efe75ebf4570d9e0f917352))
+
 ## [0.6.2](https://github.com/fclairamb/ntnsync/compare/v0.6.1...v0.6.2) (2026-02-17)
 
 
