@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/fclairamb/ntnsync/internal/apperrors"
 )
 
 // Page represents a Notion page.
@@ -764,6 +766,9 @@ func IsPermanentError(err error) bool {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
 		return apiErr.IsPermanent()
+	}
+	if errors.Is(err, apperrors.ErrNoDataSources) {
+		return true
 	}
 	return false
 }
