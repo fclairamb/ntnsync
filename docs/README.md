@@ -10,6 +10,8 @@ ntnsync synchronizes Notion pages to a local git repository as markdown files.
 | [File Architecture](file-architecture.md) | Directory structure, state files, registries, queue system |
 | [Markdown Conversion](markdown-conversion.md) | How Notion blocks are converted to markdown |
 | [Development](development.md) | Logging guidelines, code organization, building |
+| [Commit Conventions](commit-conventions.md) | Conventional commits guide for PR titles |
+| [Changelog](../CHANGELOG.md) | Release history |
 
 ## Overview
 
