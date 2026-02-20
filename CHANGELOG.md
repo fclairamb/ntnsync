@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/fclairamb/ntnsync/compare/v0.6.3...v0.7.0) (2026-02-20)
+
+
+### Features
+
+* **store:** add optional separate git branch for metadata ([#60](https://github.com/fclairamb/ntnsync/issues/60)) ([a72d68d](https://github.com/fclairamb/ntnsync/commit/a72d68d5b0ba2c53663506f651295ecbf2db0ef0))
+
 ## [0.6.3](https://github.com/fclairamb/ntnsync/compare/v0.6.2...v0.6.3) (2026-02-20)
 
 
