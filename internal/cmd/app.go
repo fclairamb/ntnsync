@@ -387,7 +387,7 @@ func syncCommand() *cli.Command {
 			remoteConfig := storeRemoteConfig(storeInst)
 
 			// Pull from remote before processing (if remote is configured)
-			if err := storePull(ctx, storeInst); err != nil {
+			if err = storePull(ctx, storeInst); err != nil {
 				return fmt.Errorf("pull from remote: %w", err)
 			}
 
@@ -461,13 +461,13 @@ func listCommand() *cli.Command {
 			tree := cmd.Bool("tree")
 
 			// Setup store (no client needed for listing)
-			st, _, err := createStore(cmd)
+			storeInst, _, err := createStore(cmd)
 			if err != nil {
 				return err
 			}
 
 			// Create crawler (no client needed for list)
-			crawler := sync.NewCrawler(nil, st, sync.WithCrawlerLogger(slog.Default()))
+			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md
 			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
@@ -512,13 +512,13 @@ func statusCommand() *cli.Command {
 			folder := cmd.String("folder")
 
 			// Setup store (no client needed for status)
-			st, _, err := createStore(cmd)
+			storeInst, _, err := createStore(cmd)
 			if err != nil {
 				return err
 			}
 
 			// Create crawler (no client needed for status)
-			crawler := sync.NewCrawler(nil, st, sync.WithCrawlerLogger(slog.Default()))
+			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md
 			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
@@ -560,12 +560,12 @@ func reindexCommand() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			st, _, err := createStore(cmd)
+			storeInst, _, err := createStore(cmd)
 			if err != nil {
 				return err
 			}
 
-			crawler := sync.NewCrawler(nil, st, sync.WithCrawlerLogger(slog.Default()))
+			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 			dryRun := cmd.Bool("dry-run")
 
 			if err := crawler.Reindex(ctx, dryRun); err != nil {
@@ -597,13 +597,13 @@ func cleanupCommand() *cli.Command {
 			dryRun := cmd.Bool("dry-run")
 
 			// Setup store (no client needed for cleanup)
-			st, remoteConfig, err := createStore(cmd)
+			storeInst, remoteConfig, err := createStore(cmd)
 			if err != nil {
 				return err
 			}
 
 			// Create crawler (no client needed for cleanup)
-			crawler := sync.NewCrawler(nil, st, sync.WithCrawlerLogger(slog.Default()))
+			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 			// Reconcile root.md first
 			if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
@@ -621,7 +621,7 @@ func cleanupCommand() *cli.Command {
 
 			// Commit if enabled and not dry-run
 			if !dryRun && remoteConfig.IsCommitEnabled() && result.DeletedFiles > 0 {
-				if err := commitAndPush(ctx, crawler, st, remoteConfig, "cleanup orphaned pages"); err != nil {
+				if err := commitAndPush(ctx, crawler, storeInst, remoteConfig, "cleanup orphaned pages"); err != nil {
 					return err
 				}
 			}
@@ -728,13 +728,13 @@ func serveCommand() *cli.Command {
 			}
 
 			// Setup store (webhook server needs it for queue management)
-			st, remoteConfig, err := createStore(cmd)
+			storeInst, remoteConfig, err := createStore(cmd)
 			if err != nil {
 				return err
 			}
 
 			// Create queue manager
-			queueMgr := queue.NewManager(st, slog.Default())
+			queueMgr := queue.NewManager(storeInst, slog.Default())
 
 			// Create webhook config
 			cfg := &webhook.ServerConfig{
@@ -754,7 +754,7 @@ func serveCommand() *cli.Command {
 
 			if token != "" && cfg.AutoSync {
 				client := notion.NewClient(token)
-				crawler := sync.NewCrawler(client, st, sync.WithCrawlerLogger(slog.Default()))
+				crawler := sync.NewCrawler(client, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
 				// Reconcile root.md at startup
 				if reconcileErr := crawler.ReconcileRootMd(ctx); reconcileErr != nil {
@@ -766,14 +766,14 @@ func serveCommand() *cli.Command {
 					opts = append(opts, webhook.WithSyncDelay(cfg.SyncDelay))
 				}
 
-				syncWorker = webhook.NewSyncWorker(crawler, st, remoteConfig, slog.Default(), opts...)
+				syncWorker = webhook.NewSyncWorker(crawler, storeInst, remoteConfig, slog.Default(), opts...)
 				slog.Info("auto-sync enabled", "sync_delay", cfg.SyncDelay)
 			} else if cfg.AutoSync {
 				slog.Warn("auto-sync disabled: NOTION_TOKEN not configured")
 			}
 
 			// Create and start server
-			server := webhook.NewServer(cfg, queueMgr, st, slog.Default(), syncWorker, remoteConfig)
+			server := webhook.NewServer(cfg, queueMgr, storeInst, slog.Default(), syncWorker, remoteConfig)
 
 			slog.Info("starting webhook server",
 				"port", cfg.Port,
@@ -788,27 +788,27 @@ func serveCommand() *cli.Command {
 }
 
 // storeRemoteConfig returns the remote config from a store, supporting both LocalStore and SplitStore.
-func storeRemoteConfig(st store.Store) *store.RemoteConfig {
-	switch s := st.(type) {
+func storeRemoteConfig(storeInst store.Store) *store.RemoteConfig {
+	switch typed := storeInst.(type) {
 	case *store.LocalStore:
-		return s.RemoteConfig()
+		return typed.RemoteConfig()
 	case *store.SplitStore:
-		return s.RemoteConfig()
+		return typed.RemoteConfig()
 	default:
 		return nil
 	}
 }
 
 // storePull pulls from remote if the store supports it.
-func storePull(ctx context.Context, st store.Store) error {
-	switch s := st.(type) {
+func storePull(ctx context.Context, storeInst store.Store) error {
+	switch typed := storeInst.(type) {
 	case *store.LocalStore:
-		if s.IsRemoteEnabled() {
-			return s.Pull(ctx)
+		if typed.IsRemoteEnabled() {
+			return typed.Pull(ctx)
 		}
 	case *store.SplitStore:
-		if s.IsRemoteEnabled() {
-			return s.Pull(ctx)
+		if typed.IsRemoteEnabled() {
+			return typed.Pull(ctx)
 		}
 	}
 	return nil
@@ -882,11 +882,11 @@ func setupClientAndStore(cmd *cli.Command) (*notion.Client, store.Store, error) 
 		return nil, nil, apperrors.ErrNotionTokenRequired
 	}
 
-	st, _, err := createStore(cmd)
+	storeInst, _, err := createStore(cmd)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	client := notion.NewClient(token)
-	return client, st, nil
+	return client, storeInst, nil
 }

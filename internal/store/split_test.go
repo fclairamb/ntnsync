@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func setupSplitStoreTest(t *testing.T) (context.Context, *SplitStore, string, string) {
+func setupSplitStoreTest(t *testing.T) (context.Context, *SplitStore) {
 	t.Helper()
 
 	contentDir, err := os.MkdirTemp("", "split-content-*")
@@ -32,19 +32,19 @@ func setupSplitStoreTest(t *testing.T) (context.Context, *SplitStore, string, st
 	}
 
 	split := NewSplitStore(contentStore, metadataStore)
-	return context.Background(), split, contentDir, metadataDir
+	return context.Background(), split
 }
 
 func TestSplitStore_RoutesContentReadsToContentStore(t *testing.T) {
 	t.Parallel()
-	ctx, split, _, _ := setupSplitStoreTest(t)
+	ctx, split := setupSplitStoreTest(t)
 
 	// Write content via content store's tx
 	tx, err := split.contentStore.BeginTx(ctx)
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	if err := tx.Write(ctx, "docs/page.md", []byte("# Hello")); err != nil {
+	if err = tx.Write(ctx, "docs/page.md", []byte("# Hello")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -66,14 +66,14 @@ func TestSplitStore_RoutesContentReadsToContentStore(t *testing.T) {
 
 func TestSplitStore_RoutesMetadataReadsToMetadataStore(t *testing.T) {
 	t.Parallel()
-	ctx, split, _, _ := setupSplitStoreTest(t)
+	ctx, split := setupSplitStoreTest(t)
 
 	// Write metadata via metadata store's tx
 	tx, err := split.metadataStore.BeginTx(ctx)
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	if err := tx.Write(ctx, ".notion-sync/state.json", []byte(`{"version":3}`)); err != nil {
+	if err = tx.Write(ctx, ".notion-sync/state.json", []byte(`{"version":3}`)); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
@@ -95,7 +95,7 @@ func TestSplitStore_RoutesMetadataReadsToMetadataStore(t *testing.T) {
 
 func TestSplitTransaction_RoutesWritesByPath(t *testing.T) {
 	t.Parallel()
-	ctx, split, _, _ := setupSplitStoreTest(t)
+	ctx, split := setupSplitStoreTest(t)
 
 	tx, err := split.BeginTx(ctx)
 	if err != nil {
@@ -103,12 +103,12 @@ func TestSplitTransaction_RoutesWritesByPath(t *testing.T) {
 	}
 
 	// Write content
-	if err := tx.Write(ctx, "tech/page.md", []byte("content")); err != nil {
+	if err = tx.Write(ctx, "tech/page.md", []byte("content")); err != nil {
 		t.Fatalf("write content: %v", err)
 	}
 
 	// Write metadata
-	if err := tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{"type":"update"}`)); err != nil {
+	if err = tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{"type":"update"}`)); err != nil {
 		t.Fatalf("write metadata: %v", err)
 	}
 
@@ -132,7 +132,7 @@ func TestSplitTransaction_RoutesWritesByPath(t *testing.T) {
 
 func TestSplitTransaction_CommitsBothStores(t *testing.T) {
 	t.Parallel()
-	ctx, split, _, _ := setupSplitStoreTest(t)
+	ctx, split := setupSplitStoreTest(t)
 
 	tx, err := split.BeginTx(ctx)
 	if err != nil {
@@ -140,35 +140,35 @@ func TestSplitTransaction_CommitsBothStores(t *testing.T) {
 	}
 
 	// Write to both
-	if err := tx.Write(ctx, "page.md", []byte("content")); err != nil {
+	if err = tx.Write(ctx, "page.md", []byte("content")); err != nil {
 		t.Fatalf("write content: %v", err)
 	}
-	if err := tx.Write(ctx, ".notion-sync/ids/page-abc.json", []byte(`{"id":"abc"}`)); err != nil {
+	if err = tx.Write(ctx, ".notion-sync/ids/page-abc.json", []byte(`{"id":"abc"}`)); err != nil {
 		t.Fatalf("write metadata: %v", err)
 	}
 
 	// Commit should not error
-	if err := tx.Commit(ctx, "test commit"); err != nil {
+	if err = tx.Commit(ctx, "test commit"); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
 }
 
 func TestSplitTransaction_RollbackBothStores(t *testing.T) {
 	t.Parallel()
-	ctx, split, _, _ := setupSplitStoreTest(t)
+	ctx, split := setupSplitStoreTest(t)
 
 	// Create initial commits so rollback has a HEAD to reset to
 	initTx, err := split.BeginTx(ctx)
 	if err != nil {
 		t.Fatalf("begin init tx: %v", err)
 	}
-	if err := initTx.Write(ctx, "init.md", []byte("init")); err != nil {
+	if err = initTx.Write(ctx, "init.md", []byte("init")); err != nil {
 		t.Fatalf("write init content: %v", err)
 	}
-	if err := initTx.Write(ctx, ".notion-sync/init.json", []byte("{}")); err != nil {
+	if err = initTx.Write(ctx, ".notion-sync/init.json", []byte("{}")); err != nil {
 		t.Fatalf("write init metadata: %v", err)
 	}
-	if err := initTx.Commit(ctx, "initial commit"); err != nil {
+	if err = initTx.Commit(ctx, "initial commit"); err != nil {
 		t.Fatalf("commit init: %v", err)
 	}
 
@@ -178,22 +178,22 @@ func TestSplitTransaction_RollbackBothStores(t *testing.T) {
 		t.Fatalf("begin tx: %v", err)
 	}
 
-	if err := tx.Write(ctx, "page.md", []byte("content")); err != nil {
+	if err = tx.Write(ctx, "page.md", []byte("content")); err != nil {
 		t.Fatalf("write content: %v", err)
 	}
-	if err := tx.Write(ctx, ".notion-sync/ids/page-abc.json", []byte(`{"id":"abc"}`)); err != nil {
+	if err = tx.Write(ctx, ".notion-sync/ids/page-abc.json", []byte(`{"id":"abc"}`)); err != nil {
 		t.Fatalf("write metadata: %v", err)
 	}
 
 	// Rollback should not error
-	if err := tx.Rollback(ctx); err != nil {
+	if err = tx.Rollback(ctx); err != nil {
 		t.Fatalf("rollback: %v", err)
 	}
 }
 
 func TestSplitTransaction_DeleteRoutesCorrectly(t *testing.T) {
 	t.Parallel()
-	ctx, split, _, _ := setupSplitStoreTest(t)
+	ctx, split := setupSplitStoreTest(t)
 
 	tx, err := split.BeginTx(ctx)
 	if err != nil {
@@ -201,11 +201,11 @@ func TestSplitTransaction_DeleteRoutesCorrectly(t *testing.T) {
 	}
 
 	// Write then delete a queue file
-	if err := tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{"type":"update"}`)); err != nil {
+	if err = tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{"type":"update"}`)); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
-	if err := tx.Delete(ctx, ".notion-sync/queue/00001000.json"); err != nil {
+	if err = tx.Delete(ctx, ".notion-sync/queue/00001000.json"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
@@ -221,7 +221,7 @@ func TestSplitTransaction_DeleteRoutesCorrectly(t *testing.T) {
 
 func TestSplitStore_ListRoutesCorrectly(t *testing.T) {
 	t.Parallel()
-	ctx, split, _, _ := setupSplitStoreTest(t)
+	ctx, split := setupSplitStoreTest(t)
 
 	tx, err := split.BeginTx(ctx)
 	if err != nil {
@@ -229,15 +229,15 @@ func TestSplitStore_ListRoutesCorrectly(t *testing.T) {
 	}
 
 	// Write queue files to metadata store
-	if err := tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{}`)); err != nil {
+	if err = tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{}`)); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	if err := tx.Write(ctx, ".notion-sync/queue/00001001.json", []byte(`{}`)); err != nil {
+	if err = tx.Write(ctx, ".notion-sync/queue/00001001.json", []byte(`{}`)); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
 	// Write content file
-	if err := tx.Write(ctx, "tech/page.md", []byte("content")); err != nil {
+	if err = tx.Write(ctx, "tech/page.md", []byte("content")); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 

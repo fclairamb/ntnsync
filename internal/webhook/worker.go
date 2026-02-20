@@ -35,14 +35,14 @@ func WithSyncDelay(d time.Duration) SyncWorkerOption {
 // NewSyncWorker creates a new sync worker.
 func NewSyncWorker(
 	crawler *sync.Crawler,
-	st store.Store,
+	storeInst store.Store,
 	remoteConfig *store.RemoteConfig,
 	logger *slog.Logger,
 	opts ...SyncWorkerOption,
 ) *SyncWorker {
 	worker := &SyncWorker{
 		crawler:      crawler,
-		store:        st,
+		store:        storeInst,
 		remoteConfig: remoteConfig,
 		logger:       logger,
 		notify:       make(chan struct{}, 1),

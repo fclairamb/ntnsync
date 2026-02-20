@@ -360,7 +360,7 @@ func (t *commitTracker) markCommitted() {
 
 // commitAndPush commits changes and optionally pushes to remote.
 func commitAndPush(
-	ctx context.Context, crawler *sync.Crawler, st store.Store, cfg *store.RemoteConfig, reason string,
+	ctx context.Context, crawler *sync.Crawler, storeInst store.Store, cfg *store.RemoteConfig, reason string,
 ) error {
 	message := fmt.Sprintf("[ntnsync] %s at %s", reason, time.Now().Format(time.RFC3339))
 	if err := crawler.CommitChanges(ctx, message); err != nil {
@@ -370,7 +370,7 @@ func commitAndPush(
 
 	// Push if enabled
 	if cfg.IsPushEnabled() {
-		if err := st.Push(ctx); err != nil {
+		if err := storeInst.Push(ctx); err != nil {
 			return fmt.Errorf("push to remote: %w", err)
 		}
 	}
