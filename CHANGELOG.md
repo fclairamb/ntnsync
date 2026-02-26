@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.0](https://github.com/fclairamb/ntnsync/compare/v0.6.3...v0.7.0) (2026-02-26)
+
+
+### Features
+
+* **store:** add optional separate git branch for metadata ([#60](https://github.com/fclairamb/ntnsync/issues/60)) ([a72d68d](https://github.com/fclairamb/ntnsync/commit/a72d68d5b0ba2c53663506f651295ecbf2db0ef0))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v5 to v5.17.0 ([#63](https://github.com/fclairamb/ntnsync/issues/63)) ([930abb7](https://github.com/fclairamb/ntnsync/commit/930abb70da1d34d81007bbd5a6433e9e2a165184))
+
 ## [0.6.3](https://github.com/fclairamb/ntnsync/compare/v0.6.2...v0.6.3) (2026-02-20)
 
 
