@@ -71,7 +71,7 @@ jobs:
             -o ./bin/ntnsync .
 
       - name: Upload binary
-        uses: actions/upload-artifact@v6.0.0
+        uses: actions/upload-artifact@v7.0.0
         with:
           name: ntnsync-binary
           path: bin/ntnsync
