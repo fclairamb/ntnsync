@@ -54,7 +54,7 @@ jobs:
             echo "docker_tags=ghcr.io/fclairamb/ntnsync:test-${VERSION}" >> $GITHUB_OUTPUT
           fi
 
-      - uses: actions/setup-go@v6.2.0
+      - uses: actions/setup-go@v6.3.0
         with:
           go-version: "1.25"
 
