@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0](https://github.com/fclairamb/ntnsync/compare/v0.6.3...v0.7.0) (2026-03-11)
+
+
+### Features
+
+* **store:** add optional separate git branch for metadata ([#60](https://github.com/fclairamb/ntnsync/issues/60)) ([a72d68d](https://github.com/fclairamb/ntnsync/commit/a72d68d5b0ba2c53663506f651295ecbf2db0ef0))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v5 to v5.17.0 ([#63](https://github.com/fclairamb/ntnsync/issues/63)) ([930abb7](https://github.com/fclairamb/ntnsync/commit/930abb70da1d34d81007bbd5a6433e9e2a165184))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.3 ([#70](https://github.com/fclairamb/ntnsync/issues/70)) ([08e802d](https://github.com/fclairamb/ntnsync/commit/08e802d380505a0f50b81daeb538f8a7cfbfea7b))
+* **deps:** update module github.com/urfave/cli/v3 to v3.7.0 ([#66](https://github.com/fclairamb/ntnsync/issues/66)) ([aed6f5b](https://github.com/fclairamb/ntnsync/commit/aed6f5b4d4c684552f3353058b1a9b64c4e48462))
+* **deps:** update module golang.org/x/text to v0.35.0 ([#75](https://github.com/fclairamb/ntnsync/issues/75)) ([231e01e](https://github.com/fclairamb/ntnsync/commit/231e01e98696e0c1540dfbfb42f22fb97e96f069))
+* **deps:** update module golang.org/x/time to v0.15.0 ([#74](https://github.com/fclairamb/ntnsync/issues/74)) ([171d7aa](https://github.com/fclairamb/ntnsync/commit/171d7aaf61b29fa85681fa3ca632f2d08d74bb21))
+
 ## [0.6.3](https://github.com/fclairamb/ntnsync/compare/v0.6.2...v0.6.3) (2026-02-20)
 
 
