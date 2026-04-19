@@ -20,7 +20,10 @@ import (
 	"github.com/fclairamb/ntnsync/internal/store"
 )
 
-const testSecret = "test-webhook-secret" //nolint:gosec // test constant
+const (
+	testSecret            = "test-webhook-secret"           //nolint:gosec // test constant
+	testVerificationToken = "test-verification-token-12345" //nolint:gosec // test constant
+)
 
 // TestVerifySignature_Valid verifies that valid signatures pass verification.
 func TestVerifySignature_Valid(t *testing.T) {
@@ -281,7 +284,7 @@ func TestHandleWebhook_URLVerification(t *testing.T) {
 
 	// Notion sends verification token without a type field
 	event := Event{
-		VerificationToken: "test-verification-token-12345", //nolint:gosec // test fixture
+		VerificationToken: testVerificationToken,
 	}
 	body, err := json.Marshal(event)
 	if err != nil {
