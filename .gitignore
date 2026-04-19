@@ -2,5 +2,5 @@
 /ntnsync
 /notion
 /logs
-*.priv.*
+*.priv*
 __*

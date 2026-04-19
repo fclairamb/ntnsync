@@ -1,5 +1,7 @@
 # Claude Code Guidelines
 
+@CLAUDE.priv.md
+
 ## Documentation
 
 See `docs/` for detailed documentation:
