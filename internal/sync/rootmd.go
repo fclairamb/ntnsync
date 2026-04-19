@@ -134,7 +134,7 @@ func formatRootMd(manifest *RootManifest) string {
 		if entry.Enabled {
 			checkbox = "[x]"
 		}
-		buf.WriteString(fmt.Sprintf("- %s **%s**: %s\n", checkbox, entry.Folder, entry.URL))
+		fmt.Fprintf(&buf, "- %s **%s**: %s\n", checkbox, entry.Folder, entry.URL)
 	}
 
 	return buf.String()
