@@ -69,7 +69,7 @@ func (c *Converter) ConvertWithOptions(page *notion.Page, blocks []notion.Block,
 	// Add title as h1
 	title := page.Title()
 	if title != "" {
-		builder.WriteString(fmt.Sprintf("# %s\n\n", title))
+		fmt.Fprintf(&builder, "# %s\n\n", title)
 	}
 
 	// Convert blocks
@@ -115,7 +115,7 @@ func (c *Converter) ConvertDatabase(
 	// Add database title as heading
 	title := database.GetTitle()
 	if title != "" {
-		builder.WriteString(fmt.Sprintf("# %s\n\n", title))
+		fmt.Fprintf(&builder, "# %s\n\n", title)
 	}
 
 	// Add description if present
@@ -158,7 +158,7 @@ func (c *Converter) ConvertDatabase(
 			relPath := fmt.Sprintf("./%s/%s.md", baseFilename, slug)
 			pageID := NormalizeID(dbPage.ID)
 
-			builder.WriteString(fmt.Sprintf("- [%s](%s)<!-- page_id:%s -->\n", pageTitle, relPath, pageID))
+			fmt.Fprintf(&builder, "- [%s](%s)<!-- page_id:%s -->\n", pageTitle, relPath, pageID)
 		}
 		builder.WriteString("\n")
 	} else {

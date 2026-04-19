@@ -188,7 +188,7 @@ func (c *Client) executeWithRetry(ctx context.Context, req *http.Request, reqInf
 func (c *Client) executeRequest(
 	ctx context.Context, req *http.Request, reqInfo *requestInfo, result any, attempt int, backoff *time.Duration,
 ) (bool, error) {
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // request targets the configured Notion API endpoint
 	if err != nil {
 		return true, fmt.Errorf("do request: %w", err)
 	}

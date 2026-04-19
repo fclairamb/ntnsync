@@ -281,7 +281,7 @@ func TestHandleWebhook_URLVerification(t *testing.T) {
 
 	// Notion sends verification token without a type field
 	event := Event{
-		VerificationToken: "test-verification-token-12345",
+		VerificationToken: "test-verification-token-12345", //nolint:gosec // test fixture
 	}
 	body, err := json.Marshal(event)
 	if err != nil {
