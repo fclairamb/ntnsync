@@ -69,7 +69,7 @@ func (c *Converter) ConvertWithOptions(page *notion.Page, blocks []notion.Block,
 	// Add title as h1
 	title := page.Title()
 	if title != "" {
-		builder.WriteString(fmt.Sprintf("# %s\n\n", title))
+		fmt.Fprintf(&builder, "# %s\n\n", title)
 	}
 
 	// Convert blocks
@@ -115,7 +115,7 @@ func (c *Converter) ConvertDatabase(
 	// Add database title as heading
 	title := database.GetTitle()
 	if title != "" {
-		builder.WriteString(fmt.Sprintf("# %s\n\n", title))
+		fmt.Fprintf(&builder, "# %s\n\n", title)
 	}
 
 	// Add description if present
@@ -158,7 +158,7 @@ func (c *Converter) ConvertDatabase(
 			relPath := fmt.Sprintf("./%s/%s.md", baseFilename, slug)
 			pageID := NormalizeID(dbPage.ID)
 
-			builder.WriteString(fmt.Sprintf("- [%s](%s)<!-- page_id:%s -->\n", pageTitle, relPath, pageID))
+			fmt.Fprintf(&builder, "- [%s](%s)<!-- page_id:%s -->\n", pageTitle, relPath, pageID)
 		}
 		builder.WriteString("\n")
 	} else {
@@ -174,8 +174,8 @@ func (c *Converter) ConvertDatabase(
 func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions) string {
 	var builder strings.Builder
 	builder.WriteString("---\n")
-	builder.WriteString(fmt.Sprintf("ntnsync_version: %s\n", version.Version))
-	builder.WriteString(fmt.Sprintf("notion_id: %s\n", page.ID))
+	fmt.Fprintf(&builder, "ntnsync_version: %s\n", version.Version)
+	fmt.Fprintf(&builder, "notion_id: %s\n", page.ID)
 
 	// Title (use page title, or opts.PageTitle for databases)
 	title := page.Title()
@@ -183,7 +183,7 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 		title = opts.PageTitle
 	}
 	if title != "" {
-		builder.WriteString(fmt.Sprintf("title: %q\n", title))
+		fmt.Fprintf(&builder, "title: %q\n", title)
 	}
 
 	// Notion type (page or database)
@@ -191,54 +191,54 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 	if notionType == "" {
 		notionType = "page"
 	}
-	builder.WriteString(fmt.Sprintf("notion_type: %s\n", notionType))
+	fmt.Fprintf(&builder, "notion_type: %s\n", notionType)
 
 	// Use provided folder
 	if opts.Folder != "" {
-		builder.WriteString(fmt.Sprintf("notion_folder: %s\n", opts.Folder))
+		fmt.Fprintf(&builder, "notion_folder: %s\n", opts.Folder)
 	}
 
 	// File path for self-reference
 	if opts.FilePath != "" {
-		builder.WriteString(fmt.Sprintf("file_path: %s\n", opts.FilePath))
+		fmt.Fprintf(&builder, "file_path: %s\n", opts.FilePath)
 	}
 
 	// Creator and editor information (formatted as "Name <email> [id]")
 	if page.CreatedBy.ID != "" {
-		builder.WriteString(fmt.Sprintf("created_by: %q\n", page.CreatedBy.Format()))
+		fmt.Fprintf(&builder, "created_by: %q\n", page.CreatedBy.Format())
 	}
 	if page.LastEditedBy.ID != "" {
-		builder.WriteString(fmt.Sprintf("last_edited_by: %q\n", page.LastEditedBy.Format()))
+		fmt.Fprintf(&builder, "last_edited_by: %q\n", page.LastEditedBy.Format())
 	}
 
-	builder.WriteString(fmt.Sprintf("last_edited: %s\n", page.LastEditedTime.Format(time.RFC3339)))
+	fmt.Fprintf(&builder, "last_edited: %s\n", page.LastEditedTime.Format(time.RFC3339))
 
 	// Last synced time
 	if !opts.LastSynced.IsZero() {
-		builder.WriteString(fmt.Sprintf("last_synced: %s\n", opts.LastSynced.Format(time.RFC3339)))
+		fmt.Fprintf(&builder, "last_synced: %s\n", opts.LastSynced.Format(time.RFC3339))
 	}
 
 	// Icon
 	if iconStr := formatIcon(page.Icon); iconStr != "" {
-		builder.WriteString(fmt.Sprintf("icon: %q\n", iconStr))
+		fmt.Fprintf(&builder, "icon: %q\n", iconStr)
 	}
 
 	// Include resolved parent ID (page or database, never block)
 	if opts.ParentID != "" {
-		builder.WriteString(fmt.Sprintf("notion_parent_id: %s\n", opts.ParentID))
+		fmt.Fprintf(&builder, "notion_parent_id: %s\n", opts.ParentID)
 	}
 
-	builder.WriteString(fmt.Sprintf("is_root: %t\n", opts.IsRoot))
-	builder.WriteString(fmt.Sprintf("notion_url: %s\n", page.URL))
+	fmt.Fprintf(&builder, "is_root: %t\n", opts.IsRoot)
+	fmt.Fprintf(&builder, "notion_url: %s\n", page.URL)
 
 	// Include simplified_depth if page was depth-limited
 	if opts.SimplifiedDepth > 0 {
-		builder.WriteString(fmt.Sprintf("simplified_depth: %d\n", opts.SimplifiedDepth))
+		fmt.Fprintf(&builder, "simplified_depth: %d\n", opts.SimplifiedDepth)
 	}
 
 	// Include download duration if set
 	if opts.DownloadDuration > 0 {
-		builder.WriteString(fmt.Sprintf("download_duration: %s\n", opts.DownloadDuration))
+		fmt.Fprintf(&builder, "download_duration: %s\n", opts.DownloadDuration)
 	}
 
 	// Include properties for database pages (pages whose parent is a database)
@@ -254,7 +254,7 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 			if formatted == "" {
 				continue
 			}
-			propsBuilder.WriteString(fmt.Sprintf("  %s: %s\n", name, formatted))
+			fmt.Fprintf(&propsBuilder, "  %s: %s\n", name, formatted)
 		}
 		if propsBuilder.Len() > 0 {
 			builder.WriteString("properties:\n")
@@ -292,7 +292,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		text := notion.ParseRichTextToMarkdown(block.Heading1.RichText)
 		if block.Heading1.IsToggleable {
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("# %s\n", text))
+			fmt.Fprintf(&sb, "# %s\n", text)
 			sb.WriteString("<!-- collapsible: start -->\n")
 			sb.WriteString(c.convertChildren(block.Children, 0, opts))
 			sb.WriteString("<!-- collapsible: end -->\n")
@@ -307,7 +307,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		text := notion.ParseRichTextToMarkdown(block.Heading2.RichText)
 		if block.Heading2.IsToggleable {
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("## %s\n", text))
+			fmt.Fprintf(&sb, "## %s\n", text)
 			sb.WriteString("<!-- collapsible: start -->\n")
 			sb.WriteString(c.convertChildren(block.Children, 0, opts))
 			sb.WriteString("<!-- collapsible: end -->\n")
@@ -322,7 +322,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		text := notion.ParseRichTextToMarkdown(block.Heading3.RichText)
 		if block.Heading3.IsToggleable {
 			var sb strings.Builder
-			sb.WriteString(fmt.Sprintf("### %s\n", text))
+			fmt.Fprintf(&sb, "### %s\n", text)
 			sb.WriteString("<!-- collapsible: start -->\n")
 			sb.WriteString(c.convertChildren(block.Children, 0, opts))
 			sb.WriteString("<!-- collapsible: end -->\n")
@@ -367,7 +367,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		}
 		text := notion.ParseRichTextToMarkdown(block.Toggle.RichText)
 		var sb strings.Builder
-		sb.WriteString(fmt.Sprintf("<!-- collapsible: start -->\n**%s**\n\n", text))
+		fmt.Fprintf(&sb, "<!-- collapsible: start -->\n**%s**\n\n", text)
 		sb.WriteString(c.convertChildren(block.Children, 0, opts))
 		sb.WriteString("<!-- collapsible: end -->\n")
 		return sb.String()
@@ -391,7 +391,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		lines := strings.Split(text, "\n")
 		var sb strings.Builder
 		for _, line := range lines {
-			sb.WriteString(fmt.Sprintf("> %s\n", line))
+			fmt.Fprintf(&sb, "> %s\n", line)
 		}
 		sb.WriteString(c.convertChildren(block.Children, depth, opts))
 		return sb.String()
@@ -412,7 +412,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 			if i == 0 {
 				prefix = "> " + emoji
 			}
-			builder.WriteString(fmt.Sprintf("%s%s\n", prefix, line))
+			fmt.Fprintf(&builder, "%s%s\n", prefix, line)
 		}
 		builder.WriteString(c.convertChildren(block.Children, depth, opts))
 		return builder.String()
@@ -594,7 +594,7 @@ func (c *Converter) convertTable(block *notion.Block) string {
 			if j < len(row.TableRow.Cells) {
 				cell = notion.ParseRichTextToMarkdown(row.TableRow.Cells[j])
 			}
-			builder.WriteString(fmt.Sprintf(" %s |", cell))
+			fmt.Fprintf(&builder, " %s |", cell)
 		}
 		builder.WriteString("\n")
 
@@ -804,7 +804,7 @@ func formatPropertyValue(value any) string {
 		var builder strings.Builder
 		builder.WriteString("\n")
 		for _, s := range typedVal {
-			builder.WriteString(fmt.Sprintf("    - %q\n", s))
+			fmt.Fprintf(&builder, "    - %q\n", s)
 		}
 		return strings.TrimSuffix(builder.String(), "\n")
 	default:

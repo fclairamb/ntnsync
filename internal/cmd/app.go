@@ -85,6 +85,7 @@ func setupLogging(cmd *cli.Command) {
 	// Warn about invalid format after logger is set up
 	envVal := strings.ToLower(os.Getenv("NTN_LOG_FORMAT"))
 	if envVal != "" && envVal != "text" && envVal != "json" {
+		//nolint:gosec // structured slog field, not log injection
 		slog.Warn("Invalid NTN_LOG_FORMAT value, using text format", "value", envVal)
 	}
 
