@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/fclairamb/ntnsync/compare/v0.7.0...v0.7.1) (2026-04-20)
+
+
+### Bug Fixes
+
+* **deps:** update docusaurus monorepo to v3.10.0 ([#87](https://github.com/fclairamb/ntnsync/issues/87)) ([f3f7132](https://github.com/fclairamb/ntnsync/commit/f3f7132bbeca6fc2750b0fd73602a1662f0e3724))
+
 ## [0.7.0](https://github.com/fclairamb/ntnsync/compare/v0.6.3...v0.7.0) (2026-04-20)
 
 
