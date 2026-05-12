@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.7.2](https://github.com/fclairamb/ntnsync/compare/v0.7.1...v0.7.2) (2026-05-12)
+
+
+### Bug Fixes
+
+* **deps:** update docusaurus monorepo to v3.10.1 ([#96](https://github.com/fclairamb/ntnsync/issues/96)) ([98c6246](https://github.com/fclairamb/ntnsync/commit/98c6246f2ad2635be90f6d0d0471ad9d4c7db330))
+* **deps:** update module github.com/go-git/go-git/v5 to v5.18.0 ([#89](https://github.com/fclairamb/ntnsync/issues/89)) ([406a96f](https://github.com/fclairamb/ntnsync/commit/406a96fcc730747a9bc991acdb407b486039ee26))
+* **deps:** update module github.com/go-git/go-git/v5 to v5.19.0 ([#98](https://github.com/fclairamb/ntnsync/issues/98)) ([5016a05](https://github.com/fclairamb/ntnsync/commit/5016a0538119f09dda6e5b372c341ac35b42d830))
+* **deps:** update module github.com/urfave/cli/v3 to v3.9.0 ([#100](https://github.com/fclairamb/ntnsync/issues/100)) ([ec570ba](https://github.com/fclairamb/ntnsync/commit/ec570baf30b075625dc95989c21db2177feff7f5))
+* **deps:** update module golang.org/x/text to v0.36.0 ([#90](https://github.com/fclairamb/ntnsync/issues/90)) ([99cb058](https://github.com/fclairamb/ntnsync/commit/99cb058d0e5a23bd96b861293618e83e61dad954))
+* **deps:** update module golang.org/x/text to v0.37.0 ([#99](https://github.com/fclairamb/ntnsync/issues/99)) ([8298224](https://github.com/fclairamb/ntnsync/commit/8298224949c6c3c9007ea26f94725fc5dedcf201))
+
 ## [0.7.1](https://github.com/fclairamb/ntnsync/compare/v0.7.0...v0.7.1) (2026-04-20)
 
 
