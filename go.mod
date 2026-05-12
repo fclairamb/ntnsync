@@ -6,7 +6,7 @@ require (
 	github.com/go-git/go-git/v5 v5.19.0
 	github.com/knadh/koanf/providers/env/v2 v2.0.0
 	github.com/knadh/koanf/v2 v2.3.4
-	github.com/urfave/cli/v3 v3.8.0
+	github.com/urfave/cli/v3 v3.9.0
 	golang.org/x/text v0.37.0
 	golang.org/x/time v0.15.0
 )
