@@ -15,23 +15,23 @@ func setupSplitStoreTest(t *testing.T) (context.Context, *SplitStore) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(contentDir) })
 
-	metadataDir, err := os.MkdirTemp("", "split-metadata-*")
+	queueDir, err := os.MkdirTemp("", "split-queue-*")
 	if err != nil {
-		t.Fatalf("failed to create metadata dir: %v", err)
+		t.Fatalf("failed to create queue dir: %v", err)
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(metadataDir) })
+	t.Cleanup(func() { _ = os.RemoveAll(queueDir) })
 
 	contentStore, err := NewLocalStore(contentDir)
 	if err != nil {
 		t.Fatalf("failed to create content store: %v", err)
 	}
 
-	metadataStore, err := NewLocalStore(metadataDir)
+	queueStore, err := NewLocalStore(queueDir)
 	if err != nil {
-		t.Fatalf("failed to create metadata store: %v", err)
+		t.Fatalf("failed to create queue store: %v", err)
 	}
 
-	split := NewSplitStore(contentStore, metadataStore)
+	split := NewSplitStore(contentStore, queueStore)
 	return context.Background(), split
 }
 
@@ -57,39 +57,70 @@ func TestSplitStore_RoutesContentReadsToContentStore(t *testing.T) {
 		t.Errorf("got %q, want %q", data, "# Hello")
 	}
 
-	// Should NOT find it via metadata store
-	_, err = split.metadataStore.Read(ctx, "docs/page.md")
+	// Should NOT find it via queue store
+	_, err = split.queueStore.Read(ctx, "docs/page.md")
 	if err == nil {
-		t.Error("expected error reading content path from metadata store")
+		t.Error("expected error reading content path from queue store")
 	}
 }
 
-func TestSplitStore_RoutesMetadataReadsToMetadataStore(t *testing.T) {
+func TestSplitStore_RoutesQueueReadsToQueueStore(t *testing.T) {
 	t.Parallel()
 	ctx, split := setupSplitStoreTest(t)
 
-	// Write metadata via metadata store's tx
-	tx, err := split.metadataStore.BeginTx(ctx)
+	// Write a queue file via queue store's tx
+	tx, err := split.queueStore.BeginTx(ctx)
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
 	}
-	if err = tx.Write(ctx, ".notion-sync/state.json", []byte(`{"version":3}`)); err != nil {
+	if err = tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{"type":"update"}`)); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 
 	// Read via SplitStore should find it
-	data, err := split.Read(ctx, ".notion-sync/state.json")
+	data, err := split.Read(ctx, ".notion-sync/queue/00001000.json")
 	if err != nil {
 		t.Fatalf("read: %v", err)
 	}
-	if string(data) != `{"version":3}` {
-		t.Errorf("got %q, want %q", data, `{"version":3}`)
+	if string(data) != `{"type":"update"}` {
+		t.Errorf("got %q, want %q", data, `{"type":"update"}`)
 	}
 
 	// Should NOT find it via content store
-	_, err = split.contentStore.Read(ctx, ".notion-sync/state.json")
+	_, err = split.contentStore.Read(ctx, ".notion-sync/queue/00001000.json")
 	if err == nil {
-		t.Error("expected error reading metadata path from content store")
+		t.Error("expected error reading queue path from content store")
+	}
+}
+
+// ids and state.json are metadata but must stay on the content (main) branch.
+func TestSplitStore_RoutesIdsAndStateToContentStore(t *testing.T) {
+	t.Parallel()
+	ctx, split := setupSplitStoreTest(t)
+
+	tx, err := split.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if err = tx.Write(ctx, ".notion-sync/ids/page-abc.json", []byte(`{"id":"abc"}`)); err != nil {
+		t.Fatalf("write ids: %v", err)
+	}
+	if err = tx.Write(ctx, ".notion-sync/state.json", []byte(`{"version":3}`)); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	// Both should be found in the content store, not the queue store.
+	if _, err = split.contentStore.Read(ctx, ".notion-sync/ids/page-abc.json"); err != nil {
+		t.Errorf("expected ids in content store: %v", err)
+	}
+	if _, err = split.contentStore.Read(ctx, ".notion-sync/state.json"); err != nil {
+		t.Errorf("expected state in content store: %v", err)
+	}
+	if _, err = split.queueStore.Read(ctx, ".notion-sync/ids/page-abc.json"); err == nil {
+		t.Error("expected ids NOT in queue store")
+	}
+	if _, err = split.queueStore.Read(ctx, ".notion-sync/state.json"); err == nil {
+		t.Error("expected state NOT in queue store")
 	}
 }
 
@@ -107,12 +138,12 @@ func TestSplitTransaction_RoutesWritesByPath(t *testing.T) {
 		t.Fatalf("write content: %v", err)
 	}
 
-	// Write metadata
+	// Write queue file
 	if err = tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{"type":"update"}`)); err != nil {
-		t.Fatalf("write metadata: %v", err)
+		t.Fatalf("write queue: %v", err)
 	}
 
-	// Verify routing: content in content store, metadata in metadata store
+	// Verify routing: content in content store, queue in queue store
 	contentData, err := split.contentStore.Read(ctx, "tech/page.md")
 	if err != nil {
 		t.Fatalf("read content from content store: %v", err)
@@ -121,12 +152,12 @@ func TestSplitTransaction_RoutesWritesByPath(t *testing.T) {
 		t.Errorf("content store: got %q, want %q", contentData, "content")
 	}
 
-	metadataData, err := split.metadataStore.Read(ctx, ".notion-sync/queue/00001000.json")
+	queueData, err := split.queueStore.Read(ctx, ".notion-sync/queue/00001000.json")
 	if err != nil {
-		t.Fatalf("read metadata from metadata store: %v", err)
+		t.Fatalf("read queue from queue store: %v", err)
 	}
-	if string(metadataData) != `{"type":"update"}` {
-		t.Errorf("metadata store: got %q, want %q", metadataData, `{"type":"update"}`)
+	if string(queueData) != `{"type":"update"}` {
+		t.Errorf("queue store: got %q, want %q", queueData, `{"type":"update"}`)
 	}
 }
 
@@ -139,12 +170,12 @@ func TestSplitTransaction_CommitsBothStores(t *testing.T) {
 		t.Fatalf("begin tx: %v", err)
 	}
 
-	// Write to both
-	if err = tx.Write(ctx, "page.md", []byte("content")); err != nil {
-		t.Fatalf("write content: %v", err)
-	}
+	// Write to both: content/ids to main, queue to queue branch.
 	if err = tx.Write(ctx, ".notion-sync/ids/page-abc.json", []byte(`{"id":"abc"}`)); err != nil {
-		t.Fatalf("write metadata: %v", err)
+		t.Fatalf("write ids: %v", err)
+	}
+	if err = tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{"type":"update"}`)); err != nil {
+		t.Fatalf("write queue: %v", err)
 	}
 
 	// Commit should not error
@@ -165,8 +196,8 @@ func TestSplitTransaction_RollbackBothStores(t *testing.T) {
 	if err = initTx.Write(ctx, "init.md", []byte("init")); err != nil {
 		t.Fatalf("write init content: %v", err)
 	}
-	if err = initTx.Write(ctx, ".notion-sync/init.json", []byte("{}")); err != nil {
-		t.Fatalf("write init metadata: %v", err)
+	if err = initTx.Write(ctx, ".notion-sync/queue/00000001.json", []byte("{}")); err != nil {
+		t.Fatalf("write init queue: %v", err)
 	}
 	if err = initTx.Commit(ctx, "initial commit"); err != nil {
 		t.Fatalf("commit init: %v", err)
@@ -181,8 +212,8 @@ func TestSplitTransaction_RollbackBothStores(t *testing.T) {
 	if err = tx.Write(ctx, "page.md", []byte("content")); err != nil {
 		t.Fatalf("write content: %v", err)
 	}
-	if err = tx.Write(ctx, ".notion-sync/ids/page-abc.json", []byte(`{"id":"abc"}`)); err != nil {
-		t.Fatalf("write metadata: %v", err)
+	if err = tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{"type":"update"}`)); err != nil {
+		t.Fatalf("write queue: %v", err)
 	}
 
 	// Rollback should not error
@@ -209,13 +240,13 @@ func TestSplitTransaction_DeleteRoutesCorrectly(t *testing.T) {
 		t.Fatalf("delete: %v", err)
 	}
 
-	// File should be gone from metadata store
-	exists, err := split.metadataStore.Exists(ctx, ".notion-sync/queue/00001000.json")
+	// File should be gone from queue store
+	exists, err := split.queueStore.Exists(ctx, ".notion-sync/queue/00001000.json")
 	if err != nil {
 		t.Fatalf("exists: %v", err)
 	}
 	if exists {
-		t.Error("expected file to be deleted from metadata store")
+		t.Error("expected file to be deleted from queue store")
 	}
 }
 
@@ -228,7 +259,7 @@ func TestSplitStore_ListRoutesCorrectly(t *testing.T) {
 		t.Fatalf("begin tx: %v", err)
 	}
 
-	// Write queue files to metadata store
+	// Write queue files to queue store
 	if err = tx.Write(ctx, ".notion-sync/queue/00001000.json", []byte(`{}`)); err != nil {
 		t.Fatalf("write: %v", err)
 	}
@@ -260,7 +291,7 @@ func TestSplitStore_ListRoutesCorrectly(t *testing.T) {
 	}
 }
 
-func TestIsMetadataPath(t *testing.T) {
+func TestIsQueuePath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -268,9 +299,11 @@ func TestIsMetadataPath(t *testing.T) {
 		expected bool
 	}{
 		{".notion-sync/queue/00001000.json", true},
-		{".notion-sync/ids/page-abc.json", true},
-		{".notion-sync/state.json", true},
-		{".notion-sync", true},
+		{".notion-sync/queue", true},
+		{".notion-sync/ids/page-abc.json", false},
+		{".notion-sync/state.json", false},
+		{".notion-sync", false},
+		{".notion-sync/queueing/x.json", false},
 		{"tech/page.md", false},
 		{"root.md", false},
 		{"images/photo.png", false},
@@ -278,8 +311,8 @@ func TestIsMetadataPath(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := isMetadataPath(tt.path); got != tt.expected {
-			t.Errorf("isMetadataPath(%q) = %v, want %v", tt.path, got, tt.expected)
+		if got := isQueuePath(tt.path); got != tt.expected {
+			t.Errorf("isQueuePath(%q) = %v, want %v", tt.path, got, tt.expected)
 		}
 	}
 }

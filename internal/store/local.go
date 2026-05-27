@@ -32,11 +32,12 @@ const (
 
 // LocalStore implements Store using local filesystem and git.
 type LocalStore struct {
-	rootPath     string
-	repo         *git.Repository
-	mu           sync.RWMutex
-	logger       *slog.Logger
-	remoteConfig *RemoteConfig
+	rootPath              string
+	repo                  *git.Repository
+	mu                    sync.RWMutex
+	logger                *slog.Logger
+	remoteConfig          *RemoteConfig
+	createBranchIfMissing bool
 }
 
 // LocalStoreOption configures LocalStore.
@@ -53,6 +54,15 @@ func WithLogger(l *slog.Logger) LocalStoreOption {
 func WithRemoteConfig(cfg *RemoteConfig) LocalStoreOption {
 	return func(s *LocalStore) {
 		s.remoteConfig = cfg
+	}
+}
+
+// WithCreateBranchIfMissing makes the store initialize a fresh local branch
+// (pushed lazily on first commit) when the configured branch does not yet
+// exist on the remote, instead of failing to clone. Used for the queue branch.
+func WithCreateBranchIfMissing() LocalStoreOption {
+	return func(s *LocalStore) {
+		s.createBranchIfMissing = true
 	}
 }
 
@@ -635,12 +645,36 @@ func (s *LocalStore) cloneFromRemote(path string) (*git.Repository, error) {
 		return repo, nil
 	}
 
-	// Handle empty repository - init locally and add remote
-	if err.Error() != msgRemoteRepoEmpty {
-		return nil, fmt.Errorf("clone repository: %w", err)
+	// Empty remote repository - init locally and add remote.
+	if err.Error() == msgRemoteRepoEmpty {
+		return s.initRepoWithRemote(path)
 	}
 
-	return s.initRepoWithRemote(path)
+	// Configured branch does not exist yet on a non-empty remote. For stores
+	// allowed to create their branch (e.g. the queue branch), initialize a
+	// fresh local branch that gets pushed on the first commit.
+	if s.createBranchIfMissing && isBranchNotFoundErr(err) {
+		s.logger.Info("remote branch not found, will create it on first push",
+			"branch", s.remoteConfig.Branch)
+		return s.initRepoWithRemote(path)
+	}
+
+	return nil, fmt.Errorf("clone repository: %w", err)
+}
+
+// isBranchNotFoundErr reports whether a clone error indicates the requested
+// branch reference does not exist on the remote.
+func isBranchNotFoundErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) {
+		return true
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "reference not found") ||
+		strings.Contains(msg, "couldn't find remote ref") ||
+		strings.Contains(msg, "remote ref not found")
 }
 
 // initRepoWithRemote initializes a new repository and adds the remote.

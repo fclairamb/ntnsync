@@ -341,9 +341,17 @@ ntnsync remote test
 | `NTN_GIT_URL` | Remote git repository URL (HTTPS or SSH) |
 | `NTN_GIT_PASS` | Git password/token for HTTPS authentication |
 | `NTN_GIT_BRANCH` | Branch name (default: `main`) |
+| `NTN_QUEUE_BRANCH` | Optional separate branch for the sync queue (`.notion-sync/queue`). Empty = disabled |
 | `NTN_GIT_USER` | Git commit author name (default: `ntnsync`) |
 | `NTN_GIT_EMAIL` | Git commit author email (default: `ntnsync@localhost`) |
 | `NTN_STORAGE` | Storage mode: `local` or `remote` (auto-detected from `NTN_GIT_URL`) |
+
+**`NTN_QUEUE_BRANCH`**: When set, the rapidly-churning sync queue (`.notion-sync/queue`)
+is committed to a separate branch instead of the main branch. Page content,
+`.notion-sync/ids` registries and `.notion-sync/state.json` stay on `NTN_GIT_BRANCH`.
+This keeps the main branch history clean (only meaningful content/registry commits)
+while the noisy per-page "queued page" commits are isolated on the queue branch.
+The branch is created automatically if it does not exist on the remote.
 
 **Examples**:
 ```bash
