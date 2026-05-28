@@ -147,7 +147,7 @@ func (p *DatabasePage) Title() string {
 		if err := json.Unmarshal(propData, &prop); err != nil {
 			continue
 		}
-		if prop.Type == "title" && len(prop.Title) > 0 {
+		if prop.Type == PropTypeTitle && len(prop.Title) > 0 {
 			return ParseRichText(prop.Title)
 		}
 	}
@@ -176,7 +176,7 @@ func (p *DatabasePage) ToPage() *Page {
 
 // Title extracts the title from page properties.
 func (p *Page) Title() string {
-	if title, ok := p.Properties["title"]; ok {
+	if title, ok := p.Properties[PropTypeTitle]; ok {
 		return ParseRichText(title.Title)
 	}
 	if title, ok := p.Properties["Name"]; ok {
@@ -185,7 +185,7 @@ func (p *Page) Title() string {
 	// Try to find any title property
 	for key := range p.Properties {
 		prop := p.Properties[key]
-		if prop.Type == "title" && len(prop.Title) > 0 {
+		if prop.Type == PropTypeTitle && len(prop.Title) > 0 {
 			return ParseRichText(prop.Title)
 		}
 	}
@@ -220,8 +220,21 @@ type BotOwner struct {
 	User *User  `json:"user,omitempty"`
 }
 
-// shortIDLength is the number of characters to use for short user IDs.
-const shortIDLength = 8
+const (
+	// shortIDLength is the number of characters to use for short user IDs.
+	shortIDLength = 8
+
+	// PropTypeTitle is the Notion property type for page titles.
+	PropTypeTitle = "title"
+	// UserTypePerson identifies real (non-bot) Notion users.
+	UserTypePerson = "person"
+	// RichTextTypeMention identifies mention-type rich text items.
+	RichTextTypeMention = "mention"
+	// FilterTypePage is the Notion search filter value for pages.
+	FilterTypePage = "page"
+	// FilterTypeDatabase is the Notion search filter value for databases.
+	FilterTypeDatabase = "database"
+)
 
 // Format returns the user in a human-readable format.
 // Format: "Name <email> [short_id]"
@@ -245,7 +258,7 @@ func (u *User) Format() string {
 	}
 
 	// Person with email: "Name <email> [id]"
-	if u.Type == "person" && u.Person != nil && u.Person.Email != "" {
+	if u.Type == UserTypePerson && u.Person != nil && u.Person.Email != "" {
 		return fmt.Sprintf("%s <%s> [%s]", name, u.Person.Email, shortID)
 	}
 
@@ -690,7 +703,7 @@ func ParseRichTextToMarkdown(richText []RichText) string {
 		text := item.PlainText
 
 		// Handle user mentions with formatted user info
-		if item.Type == "mention" && item.Mention != nil && item.Mention.User != nil {
+		if item.Type == RichTextTypeMention && item.Mention != nil && item.Mention.User != nil {
 			text = "@" + item.Mention.User.Format()
 		}
 

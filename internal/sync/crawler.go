@@ -17,6 +17,7 @@ const (
 
 	queueTypeInit       = "init"
 	parentTypeBlockID   = "block_id"
+	parentTypePageID    = "page_id"
 	parentTypeWorkspace = "workspace"
 
 	defaultUntitledStr = "untitled"

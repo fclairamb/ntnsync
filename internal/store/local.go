@@ -24,6 +24,7 @@ import (
 
 const (
 	msgRemoteRepoEmpty = "remote repository is empty"
+	gitRemoteName      = "origin"
 
 	// File and directory permissions.
 	dirPerm  = 0750 // Directory permissions: rwxr-x---
@@ -214,7 +215,7 @@ func (s *LocalStore) pullLocked(ctx context.Context) error {
 	s.logger.InfoContext(ctx, "pulling from remote", "url", s.remoteConfig.URL, "branch", s.remoteConfig.Branch)
 
 	err = worktree.PullContext(ctx, &git.PullOptions{
-		RemoteName:    "origin",
+		RemoteName:    gitRemoteName,
 		ReferenceName: plumbing.NewBranchReferenceName(s.remoteConfig.Branch),
 		Auth:          auth,
 	})
@@ -246,7 +247,7 @@ func (s *LocalStore) pullLocked(ctx context.Context) error {
 func (s *LocalStore) fetchAndMergeLocked(ctx context.Context, auth transport.AuthMethod, worktree *git.Worktree) error {
 	// Fetch remote changes
 	err := s.repo.FetchContext(ctx, &git.FetchOptions{
-		RemoteName: "origin",
+		RemoteName: gitRemoteName,
 		Auth:       auth,
 	})
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
@@ -254,7 +255,7 @@ func (s *LocalStore) fetchAndMergeLocked(ctx context.Context, auth transport.Aut
 	}
 
 	// Get remote branch reference
-	remoteBranch := plumbing.NewRemoteReferenceName("origin", s.remoteConfig.Branch)
+	remoteBranch := plumbing.NewRemoteReferenceName(gitRemoteName, s.remoteConfig.Branch)
 	remoteRef, err := s.repo.Reference(remoteBranch, true)
 	if err != nil {
 		return fmt.Errorf("get remote ref: %w", err)
@@ -324,7 +325,7 @@ func (s *LocalStore) pushLocked(ctx context.Context, auth transport.AuthMethod) 
 
 	refSpec := config.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", s.remoteConfig.Branch, s.remoteConfig.Branch))
 	err := s.repo.PushContext(ctx, &git.PushOptions{
-		RemoteName: "origin",
+		RemoteName: gitRemoteName,
 		Auth:       auth,
 		RefSpecs:   []config.RefSpec{refSpec},
 	})
@@ -355,7 +356,7 @@ func (s *LocalStore) TestConnection(ctx context.Context) error {
 
 	// Try to list remote references to verify connectivity
 	rem := git.NewRemote(nil, &config.RemoteConfig{
-		Name: "origin",
+		Name: gitRemoteName,
 		URLs: []string{s.remoteConfig.URL},
 	})
 
@@ -662,7 +663,7 @@ func (s *LocalStore) initRepoWithRemote(path string) (*git.Repository, error) {
 	}
 
 	_, err = repo.CreateRemote(&config.RemoteConfig{
-		Name: "origin",
+		Name: gitRemoteName,
 		URLs: []string{s.remoteConfig.URL},
 	})
 	if err != nil {
@@ -736,7 +737,7 @@ func (s *LocalStore) ensureRemoteConfigured(repo *git.Repository) (*git.Reposito
 	}
 
 	// Check if remote exists
-	remote, err := repo.Remote("origin")
+	remote, err := repo.Remote(gitRemoteName)
 	if err != nil {
 		// Remote doesn't exist, add it
 		s.logger.Info("adding remote origin to existing repo", "url", s.remoteConfig.URL)
@@ -754,7 +755,7 @@ func (s *LocalStore) ensureRemoteConfigured(repo *git.Repository) (*git.Reposito
 
 	// URL mismatch, update the remote
 	s.logger.Info("updating remote origin URL", "old", cfg.URLs, "new", s.remoteConfig.URL)
-	if err := repo.DeleteRemote("origin"); err != nil {
+	if err := repo.DeleteRemote(gitRemoteName); err != nil {
 		return nil, fmt.Errorf("delete old remote origin: %w", err)
 	}
 	if err := s.addRemoteToRepo(repo); err != nil {
@@ -767,7 +768,7 @@ func (s *LocalStore) ensureRemoteConfigured(repo *git.Repository) (*git.Reposito
 // addRemoteToRepo adds the origin remote to a repository.
 func (s *LocalStore) addRemoteToRepo(repo *git.Repository) error {
 	_, err := repo.CreateRemote(&config.RemoteConfig{
-		Name: "origin",
+		Name: gitRemoteName,
 		URLs: []string{s.remoteConfig.URL},
 	})
 	if err != nil {

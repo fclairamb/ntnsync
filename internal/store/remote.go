@@ -217,7 +217,7 @@ func (c *RemoteConfig) TestConnection(ctx context.Context) error {
 
 	// Try to list remote references to verify connectivity
 	rem := git.NewRemote(nil, &config.RemoteConfig{
-		Name: "origin",
+		Name: gitRemoteName,
 		URLs: []string{c.URL},
 	})
 

@@ -25,6 +25,10 @@ import (
 const (
 	// Default ports.
 	defaultWebhookPort = 8080
+
+	// CLI flag names.
+	flagFolder = "folder"
+	flagDryRun = "dry-run"
 )
 
 var (
@@ -85,7 +89,6 @@ func setupLogging(cmd *cli.Command) {
 	// Warn about invalid format after logger is set up
 	envVal := strings.ToLower(os.Getenv("NTN_LOG_FORMAT"))
 	if envVal != "" && envVal != "text" && envVal != "json" {
-		//nolint:gosec // structured slog field, not log injection
 		slog.Warn("Invalid NTN_LOG_FORMAT value, using text format", "value", envVal)
 	}
 
@@ -157,7 +160,7 @@ func getCommand() *cli.Command {
 		ArgsUsage: "<page_id_or_url>",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "folder",
+				Name:    flagFolder,
 				Aliases: []string{"f"},
 				Usage:   "Folder name (optional, auto-detected from parent chain)",
 			},
@@ -174,7 +177,7 @@ func getCommand() *cli.Command {
 			}
 
 			pageInput := cmd.Args().Get(0)
-			folder := cmd.String("folder")
+			folder := cmd.String(flagFolder)
 
 			// Parse page ID from URL or raw ID
 			pageID, err := notion.ParsePageIDOrURL(pageInput)
@@ -196,7 +199,7 @@ func getCommand() *cli.Command {
 				return fmt.Errorf("get page: %w", err)
 			}
 
-			slog.Info("page retrieved successfully", "page_id", pageID)
+			slog.InfoContext(ctx, "page retrieved successfully", "page_id", pageID)
 
 			return nil
 		},
@@ -257,7 +260,7 @@ func pullCommand() *cli.Command {
 		Usage: "Fetch all pages changed since last pull and queue them for sync",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "folder",
+				Name:    flagFolder,
 				Aliases: []string{"f"},
 				Usage:   "Only pull changes for pages in specified folder",
 			},
@@ -276,7 +279,7 @@ func pullCommand() *cli.Command {
 				Usage: "Include pages not yet tracked (discover new pages)",
 			},
 			&cli.BoolFlag{
-				Name:  "dry-run",
+				Name:  flagDryRun,
 				Usage: "Preview changes without modifying anything",
 			},
 			verboseFlag,
@@ -286,11 +289,11 @@ func pullCommand() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			folder := cmd.String("folder")
+			folder := cmd.String(flagFolder)
 			since := cmd.Duration("since")
 			maxPages := cmd.Int("max-pages")
 			all := cmd.Bool("all")
-			dryRun := cmd.Bool("dry-run")
+			dryRun := cmd.Bool(flagDryRun)
 			verbose := cmd.Bool("verbose")
 
 			// Setup client and store
@@ -337,7 +340,7 @@ func syncCommand() *cli.Command {
 		Usage: "Process the queue and sync all pages recursively",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "folder",
+				Name:    flagFolder,
 				Aliases: []string{"f"},
 				Usage:   "Only sync pages in specified folder",
 			},
@@ -372,7 +375,7 @@ func syncCommand() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			folder := cmd.String("folder")
+			folder := cmd.String(flagFolder)
 			maxPages := cmd.Int("max-pages")
 			maxFiles := cmd.Int("max-files")
 			maxTime := cmd.Duration("max-time")
@@ -429,7 +432,7 @@ func syncCommand() *cli.Command {
 				}
 			}
 
-			slog.Info("sync complete")
+			slog.InfoContext(ctx, "sync complete")
 			return nil
 		},
 	}
@@ -442,7 +445,7 @@ func listCommand() *cli.Command {
 		Usage: "List all folders and their pages",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "folder",
+				Name:    flagFolder,
 				Aliases: []string{"f"},
 				Usage:   "Only list pages in specified folder",
 			},
@@ -458,7 +461,7 @@ func listCommand() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			folder := cmd.String("folder")
+			folder := cmd.String(flagFolder)
 			tree := cmd.Bool("tree")
 
 			// Setup store (no client needed for listing)
@@ -499,7 +502,7 @@ func statusCommand() *cli.Command {
 		Usage: "Show sync status and queue information",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:    "folder",
+				Name:    flagFolder,
 				Aliases: []string{"f"},
 				Usage:   "Only show status for specified folder",
 			},
@@ -510,7 +513,7 @@ func statusCommand() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			folder := cmd.String("folder")
+			folder := cmd.String(flagFolder)
 
 			// Setup store (no client needed for status)
 			storeInst, _, err := createStore(cmd)
@@ -552,7 +555,7 @@ func reindexCommand() *cli.Command {
 		Flags: []cli.Flag{
 			verboseFlag,
 			&cli.BoolFlag{
-				Name:  "dry-run",
+				Name:  flagDryRun,
 				Usage: "Show what would be done without making changes",
 			},
 		},
@@ -567,7 +570,7 @@ func reindexCommand() *cli.Command {
 			}
 
 			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
-			dryRun := cmd.Bool("dry-run")
+			dryRun := cmd.Bool(flagDryRun)
 
 			if err := crawler.Reindex(ctx, dryRun); err != nil {
 				return fmt.Errorf("reindex: %w", err)
@@ -585,7 +588,7 @@ func cleanupCommand() *cli.Command {
 		Usage: "Delete orphaned pages not tracing to root.md",
 		Flags: []cli.Flag{
 			&cli.BoolFlag{
-				Name:  "dry-run",
+				Name:  flagDryRun,
 				Usage: "Preview only, don't delete anything",
 			},
 			verboseFlag,
@@ -595,7 +598,7 @@ func cleanupCommand() *cli.Command {
 			return ctx, nil
 		},
 		Action: func(ctx context.Context, cmd *cli.Command) error {
-			dryRun := cmd.Bool("dry-run")
+			dryRun := cmd.Bool(flagDryRun)
 
 			// Setup store (no client needed for cleanup)
 			storeInst, remoteConfig, err := createStore(cmd)
@@ -725,7 +728,8 @@ func serveCommand() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			secret := cmd.String("secret")
 			if secret == "" {
-				slog.Warn("webhook secret not configured - signature verification disabled (set --secret or NTN_WEBHOOK_SECRET)")
+				slog.WarnContext(ctx, "webhook secret not configured - signature verification disabled",
+					"hint", "set --secret or NTN_WEBHOOK_SECRET")
 			}
 
 			// Setup store (webhook server needs it for queue management)
@@ -768,15 +772,15 @@ func serveCommand() *cli.Command {
 				}
 
 				syncWorker = webhook.NewSyncWorker(crawler, storeInst, remoteConfig, slog.Default(), opts...)
-				slog.Info("auto-sync enabled", "sync_delay", cfg.SyncDelay)
+				slog.InfoContext(ctx, "auto-sync enabled", "sync_delay", cfg.SyncDelay)
 			} else if cfg.AutoSync {
-				slog.Warn("auto-sync disabled: NOTION_TOKEN not configured")
+				slog.WarnContext(ctx, "auto-sync disabled: NOTION_TOKEN not configured")
 			}
 
 			// Create and start server
 			server := webhook.NewServer(cfg, queueMgr, storeInst, slog.Default(), syncWorker, remoteConfig)
 
-			slog.Info("starting webhook server",
+			slog.InfoContext(ctx, "starting webhook server",
 				"port", cfg.Port,
 				"path", cfg.Path,
 				"auto_sync", cfg.AutoSync,

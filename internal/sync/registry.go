@@ -45,13 +45,13 @@ func loadRegistry[T any](ctx context.Context, crawler *Crawler, prefix, registry
 
 // savePageRegistry saves a page registry file.
 func (c *Crawler) savePageRegistry(ctx context.Context, reg *PageRegistry) error {
-	return saveRegistry(ctx, c, "page", reg.ID, reg)
+	return saveRegistry(ctx, c, notionTypePage, reg.ID, reg)
 }
 
 // loadPageRegistry loads a page registry file.
 // Tries page-{id}.json format first, falls back to old format ({id}.json) for backward compatibility.
 func (c *Crawler) loadPageRegistry(ctx context.Context, pageID string) (*PageRegistry, error) {
-	reg, err := loadRegistry[PageRegistry](ctx, c, "page", pageID)
+	reg, err := loadRegistry[PageRegistry](ctx, c, notionTypePage, pageID)
 	if err != nil {
 		// Fall back to old format for backward compatibility
 		oldPath := filepath.Join(stateDir, idsDir, pageID+".json")

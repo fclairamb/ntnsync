@@ -15,6 +15,7 @@ import (
 const (
 	blockTypeFile      = "file"
 	defaultUntitledStr = "untitled"
+	notionTypePage     = "page"
 
 	// Property type constants.
 	propTypeNumber = "number"
@@ -189,7 +190,7 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 	// Notion type (page or database)
 	notionType := opts.NotionType
 	if notionType == "" {
-		notionType = "page"
+		notionType = notionTypePage
 	}
 	fmt.Fprintf(&builder, "notion_type: %s\n", notionType)
 
@@ -663,7 +664,7 @@ func extractPropertyValue(prop *notion.Property) any {
 	}
 
 	switch prop.Type {
-	case "title":
+	case notion.PropTypeTitle:
 		// Skip title - it's handled separately in frontmatter
 		return nil
 	case "rich_text":

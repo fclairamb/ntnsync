@@ -188,7 +188,7 @@ func (c *Client) Search(ctx context.Context, filter SearchFilter) (*SearchRespon
 	if filter.FilterType != "" {
 		filterValue := filter.FilterType
 		// API 2025-09-03 uses "data_source" instead of "database"
-		if filterValue == "database" {
+		if filterValue == FilterTypeDatabase {
 			filterValue = "data_source"
 		}
 		body["filter"] = map[string]string{
@@ -249,7 +249,7 @@ func (c *Client) SearchAllPagesWithStop(ctx context.Context, shouldStop func([]P
 
 	for {
 		result, err := c.Search(ctx, SearchFilter{
-			FilterType:    "page",
+			FilterType:    FilterTypePage,
 			StartCursor:   cursor,
 			PageSize:      defaultPageSize,
 			SortDirection: "descending", // Newest pages first
@@ -288,7 +288,7 @@ func (c *Client) SearchWorkspacePages(ctx context.Context) ([]Page, error) {
 	for {
 		batchNum++
 		result, err := c.Search(ctx, SearchFilter{
-			FilterType:  "page",
+			FilterType:  FilterTypePage,
 			StartCursor: cursor,
 			PageSize:    defaultPageSize,
 		})
@@ -306,7 +306,7 @@ func (c *Client) SearchWorkspacePages(ctx context.Context) ([]Page, error) {
 				workspacePages = append(workspacePages, *page)
 				batchWorkspacePages++
 				c.logger.InfoContext(ctx, "found root page",
-					"title", page.Title(),
+					PropTypeTitle, page.Title(),
 					"space_id", page.Parent.SpaceID)
 			}
 		}

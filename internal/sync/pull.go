@@ -147,7 +147,7 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 			// Skip untracked pages unless --all flag is set
 			c.logger.DebugContext(ctx, "skipping untracked page",
 				"page_id", pageID,
-				"title", page.Title())
+				logKeyTitle, page.Title())
 			result.PagesSkipped++
 			continue
 		}
@@ -175,7 +175,7 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 			if err != nil {
 				c.logger.WarnContext(ctx, "failed to trace parent chain, skipping",
 					"page_id", pageID,
-					"title", page.Title(),
+					logKeyTitle, page.Title(),
 					"error", err)
 				result.PagesSkipped++
 				continue
@@ -185,7 +185,7 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 			if !foundRoot {
 				c.logger.DebugContext(ctx, "skipping page not under any root",
 					"page_id", pageID,
-					"title", page.Title())
+					logKeyTitle, page.Title())
 				result.PagesSkipped++
 				continue
 			}
@@ -195,7 +195,7 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 
 			c.logger.InfoContext(ctx, "new page discovered",
 				"page_id", pageID,
-				"title", page.Title(),
+				logKeyTitle, page.Title(),
 				"folder", folder,
 				"missing_parents", len(parentChain))
 		}
@@ -225,7 +225,7 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 		if opts.Verbose {
 			c.logger.InfoContext(ctx, "page will be queued",
 				"page_id", pageID,
-				"title", page.Title(),
+				logKeyTitle, page.Title(),
 				"folder", folder,
 				"last_edited", page.LastEditedTime)
 		}

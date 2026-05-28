@@ -63,7 +63,7 @@ func (c *Crawler) Cleanup(ctx context.Context, dryRun bool) (*CleanupResult, err
 		result.OrphanedPages++
 		c.logger.InfoContext(ctx, "found orphaned page",
 			"page_id", reg.ID,
-			"title", reg.Title,
+			logKeyTitle, reg.Title,
 			"file_path", reg.FilePath,
 			"root_id", rootID,
 			"dry_run", dryRun)

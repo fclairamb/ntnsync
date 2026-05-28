@@ -218,20 +218,20 @@ func (h *Handler) verifySignature(req *http.Request) bool {
 	timestamp := req.Header.Get("Notion-Webhook-Timestamp")
 
 	if signature == "" || timestamp == "" {
-		h.logger.Debug("missing signature or timestamp headers")
+		h.logger.DebugContext(req.Context(), "missing signature or timestamp headers")
 		return false
 	}
 
 	// Validate timestamp
 	if !h.validateTimestamp(timestamp) {
-		h.logger.Debug("timestamp validation failed", "timestamp", timestamp)
+		h.logger.DebugContext(req.Context(), "timestamp validation failed", "timestamp", timestamp)
 		return false
 	}
 
 	// Read body
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		h.logger.Debug("failed to read body", "error", err)
+		h.logger.DebugContext(req.Context(), "failed to read body", "error", err)
 		return false
 	}
 	req.Body = io.NopCloser(bytes.NewBuffer(body))
