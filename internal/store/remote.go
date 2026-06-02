@@ -30,28 +30,28 @@ const (
 
 // RemoteConfig holds configuration for remote git operations.
 type RemoteConfig struct {
-	Storage        StorageMode   // Storage mode: "local", "remote", or auto-detect (NTN_STORAGE)
-	URL            string        // Remote git repository URL (NTN_GIT_URL)
-	Password       string        // Password/token for HTTPS auth (NTN_GIT_PASS)
-	Branch         string        // Target branch (NTN_GIT_BRANCH)
-	MetadataBranch string        // Separate branch for metadata (NTN_METADATA_BRANCH), empty = disabled
-	User           string        // Commit author name (NTN_GIT_USER)
-	Email          string        // Commit author email (NTN_GIT_EMAIL)
-	Commit         bool          // Enable automatic git commit (NTN_COMMIT)
-	CommitPeriod   time.Duration // Periodic commit interval during sync (NTN_COMMIT_PERIOD)
-	Push           *bool         // Push to remote after commits (NTN_PUSH), nil means auto-detect
+	Storage      StorageMode   // Storage mode: "local", "remote", or auto-detect (NTN_STORAGE)
+	URL          string        // Remote git repository URL (NTN_GIT_URL)
+	Password     string        // Password/token for HTTPS auth (NTN_GIT_PASS)
+	Branch       string        // Target branch (NTN_GIT_BRANCH)
+	QueueBranch  string        // Separate branch for the queue (NTN_QUEUE_BRANCH), empty = disabled
+	User         string        // Commit author name (NTN_GIT_USER)
+	Email        string        // Commit author email (NTN_GIT_EMAIL)
+	Commit       bool          // Enable automatic git commit (NTN_COMMIT)
+	CommitPeriod time.Duration // Periodic commit interval during sync (NTN_COMMIT_PERIOD)
+	Push         *bool         // Push to remote after commits (NTN_PUSH), nil means auto-detect
 }
 
 // LoadRemoteConfigFromEnv loads remote configuration from environment variables.
 func LoadRemoteConfigFromEnv() *RemoteConfig {
 	cfg := &RemoteConfig{
-		Storage:        StorageMode(strings.ToLower(os.Getenv("NTN_STORAGE"))),
-		URL:            os.Getenv("NTN_GIT_URL"),
-		Password:       os.Getenv("NTN_GIT_PASS"),
-		Branch:         os.Getenv("NTN_GIT_BRANCH"),
-		MetadataBranch: os.Getenv("NTN_METADATA_BRANCH"),
-		User:           os.Getenv("NTN_GIT_USER"),
-		Email:          os.Getenv("NTN_GIT_EMAIL"),
+		Storage:     StorageMode(strings.ToLower(os.Getenv("NTN_STORAGE"))),
+		URL:         os.Getenv("NTN_GIT_URL"),
+		Password:    os.Getenv("NTN_GIT_PASS"),
+		Branch:      os.Getenv("NTN_GIT_BRANCH"),
+		QueueBranch: os.Getenv("NTN_QUEUE_BRANCH"),
+		User:        os.Getenv("NTN_GIT_USER"),
+		Email:       os.Getenv("NTN_GIT_EMAIL"),
 	}
 
 	// Apply defaults
@@ -134,12 +134,12 @@ func (c *RemoteConfig) IsEnabled() bool {
 	return c.URL != ""
 }
 
-// HasMetadataBranch returns true if a separate metadata branch is configured.
-func (c *RemoteConfig) HasMetadataBranch() bool {
+// HasQueueBranch returns true if a separate queue branch is configured.
+func (c *RemoteConfig) HasQueueBranch() bool {
 	if c == nil {
 		return false
 	}
-	return c.MetadataBranch != ""
+	return c.QueueBranch != ""
 }
 
 // IsSSH returns true if the URL is an SSH URL.

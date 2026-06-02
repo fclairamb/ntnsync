@@ -265,6 +265,9 @@ func displayRemoteConfig(cfg *store.RemoteConfig) {
 		}
 	}
 	fmt.Printf("Branch:   %s\n", cfg.Branch)
+	if cfg.HasQueueBranch() {
+		fmt.Printf("Queue:    %s (separate branch for .notion-sync/queue)\n", cfg.QueueBranch)
+	}
 	fmt.Printf("User:     %s\n", cfg.User)
 	fmt.Printf("Email:    %s\n", cfg.Email)
 

@@ -830,8 +830,10 @@ func resolveStorePath(cmd *cli.Command) string {
 }
 
 // createStore creates a store from command flags.
-// If NTN_METADATA_BRANCH is set, returns a SplitStore that routes metadata
-// to a separate branch. Otherwise, returns a plain LocalStore.
+// If NTN_QUEUE_BRANCH is set, returns a SplitStore that routes the queue
+// (.notion-sync/queue) to a separate branch while content, .notion-sync/ids
+// and .notion-sync/state.json stay on the main branch. Otherwise, returns a
+// plain LocalStore.
 func createStore(cmd *cli.Command) (store.Store, *store.RemoteConfig, error) {
 	storePath := resolveStorePath(cmd)
 	remoteConfig := store.LoadRemoteConfigFromEnv()
@@ -841,14 +843,16 @@ func createStore(cmd *cli.Command) (store.Store, *store.RemoteConfig, error) {
 		return nil, nil, fmt.Errorf("create store: %w", err)
 	}
 
-	if remoteConfig.HasMetadataBranch() {
-		metadataPath := filepath.Join(storePath, ".notion-sync-repo")
+	if remoteConfig.HasQueueBranch() {
+		// Keep the queue clone outside the content working tree so the content
+		// repo never sees (and never commits) the nested queue checkout.
+		queuePath := filepath.Clean(storePath) + "-queue"
 
-		metadataRemoteConfig := &store.RemoteConfig{
+		queueRemoteConfig := &store.RemoteConfig{
 			Storage:      remoteConfig.Storage,
 			URL:          remoteConfig.URL,
 			Password:     remoteConfig.Password,
-			Branch:       remoteConfig.MetadataBranch,
+			Branch:       remoteConfig.QueueBranch,
 			User:         remoteConfig.User,
 			Email:        remoteConfig.Email,
 			Commit:       remoteConfig.Commit,
@@ -856,18 +860,19 @@ func createStore(cmd *cli.Command) (store.Store, *store.RemoteConfig, error) {
 			Push:         remoteConfig.Push,
 		}
 
-		metadataStore, err := store.NewLocalStore(metadataPath,
-			store.WithRemoteConfig(metadataRemoteConfig),
+		queueStore, err := store.NewLocalStore(queuePath,
+			store.WithRemoteConfig(queueRemoteConfig),
+			store.WithCreateBranchIfMissing(),
 			store.WithLogger(slog.Default()))
 		if err != nil {
-			return nil, nil, fmt.Errorf("create metadata store: %w", err)
+			return nil, nil, fmt.Errorf("create queue store: %w", err)
 		}
 
-		slog.Info("metadata branch enabled",
-			"branch", remoteConfig.MetadataBranch,
-			"path", metadataPath)
+		slog.Info("queue branch enabled",
+			"branch", remoteConfig.QueueBranch,
+			"path", queuePath)
 
-		return store.NewSplitStore(contentStore, metadataStore), remoteConfig, nil
+		return store.NewSplitStore(contentStore, queueStore), remoteConfig, nil
 	}
 
 	return contentStore, remoteConfig, nil

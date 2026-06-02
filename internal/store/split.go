@@ -8,32 +8,33 @@ import (
 	"strings"
 )
 
-const metadataPrefix = ".notion-sync"
+const queuePrefix = ".notion-sync/queue"
 
 // SplitStore routes operations by path prefix.
-// Paths starting with ".notion-sync" go to metadataStore,
-// everything else goes to contentStore.
+// Paths under ".notion-sync/queue" go to queueStore (the queue branch),
+// everything else — including content, ".notion-sync/ids", and
+// ".notion-sync/state.json" — goes to contentStore (the main branch).
 type SplitStore struct {
-	contentStore  *LocalStore
-	metadataStore *LocalStore
+	contentStore *LocalStore
+	queueStore   *LocalStore
 }
 
-// NewSplitStore creates a new SplitStore that routes metadata operations
+// NewSplitStore creates a new SplitStore that routes queue operations
 // to a separate store.
-func NewSplitStore(contentStore, metadataStore *LocalStore) *SplitStore {
+func NewSplitStore(contentStore, queueStore *LocalStore) *SplitStore {
 	return &SplitStore{
-		contentStore:  contentStore,
-		metadataStore: metadataStore,
+		contentStore: contentStore,
+		queueStore:   queueStore,
 	}
 }
 
-func isMetadataPath(path string) bool {
-	return strings.HasPrefix(path, metadataPrefix)
+func isQueuePath(path string) bool {
+	return path == queuePrefix || strings.HasPrefix(path, queuePrefix+"/")
 }
 
 func (s *SplitStore) storeFor(path string) *LocalStore {
-	if isMetadataPath(path) {
-		return s.metadataStore
+	if isQueuePath(path) {
+		return s.queueStore
 	}
 	return s.contentStore
 }
@@ -59,13 +60,13 @@ func (s *SplitStore) BeginTx(ctx context.Context) (Transaction, error) {
 	if err != nil {
 		return nil, fmt.Errorf("begin content tx: %w", err)
 	}
-	metadataTx, err := s.metadataStore.BeginTx(ctx)
+	queueTx, err := s.queueStore.BeginTx(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin metadata tx: %w", err)
+		return nil, fmt.Errorf("begin queue tx: %w", err)
 	}
 	return &splitTransaction{
-		contentTx:  contentTx,
-		metadataTx: metadataTx,
+		contentTx: contentTx,
+		queueTx:   queueTx,
 	}, nil
 }
 
@@ -74,8 +75,8 @@ func (s *SplitStore) Push(ctx context.Context) error {
 	if err := s.contentStore.Push(ctx); err != nil {
 		return fmt.Errorf("push content: %w", err)
 	}
-	if err := s.metadataStore.Push(ctx); err != nil {
-		return fmt.Errorf("push metadata: %w", err)
+	if err := s.queueStore.Push(ctx); err != nil {
+		return fmt.Errorf("push queue: %w", err)
 	}
 	return nil
 }
@@ -83,12 +84,12 @@ func (s *SplitStore) Push(ctx context.Context) error {
 // Lock acquires locks on both stores (content first).
 func (s *SplitStore) Lock() {
 	s.contentStore.Lock()
-	s.metadataStore.Lock()
+	s.queueStore.Lock()
 }
 
-// Unlock releases locks on both stores (metadata first to avoid deadlock).
+// Unlock releases locks on both stores (queue first to avoid deadlock).
 func (s *SplitStore) Unlock() {
-	s.metadataStore.Unlock()
+	s.queueStore.Unlock()
 	s.contentStore.Unlock()
 }
 
@@ -97,8 +98,8 @@ func (s *SplitStore) Pull(ctx context.Context) error {
 	if err := s.contentStore.Pull(ctx); err != nil {
 		return fmt.Errorf("pull content: %w", err)
 	}
-	if err := s.metadataStore.Pull(ctx); err != nil {
-		return fmt.Errorf("pull metadata: %w", err)
+	if err := s.queueStore.Pull(ctx); err != nil {
+		return fmt.Errorf("pull queue: %w", err)
 	}
 	return nil
 }
@@ -118,20 +119,20 @@ func (s *SplitStore) ContentStore() *LocalStore {
 	return s.contentStore
 }
 
-// MetadataStore returns the underlying metadata store.
-func (s *SplitStore) MetadataStore() *LocalStore {
-	return s.metadataStore
+// QueueStore returns the underlying queue store.
+func (s *SplitStore) QueueStore() *LocalStore {
+	return s.queueStore
 }
 
 // splitTransaction routes write operations to the correct underlying transaction.
 type splitTransaction struct {
-	contentTx  Transaction
-	metadataTx Transaction
+	contentTx Transaction
+	queueTx   Transaction
 }
 
 func (t *splitTransaction) txFor(path string) Transaction {
-	if isMetadataPath(path) {
-		return t.metadataTx
+	if isQueuePath(path) {
+		return t.queueTx
 	}
 	return t.contentTx
 }
@@ -161,8 +162,8 @@ func (t *splitTransaction) Commit(ctx context.Context, message string) error {
 	if err := t.contentTx.Commit(ctx, message); err != nil {
 		return fmt.Errorf("commit content: %w", err)
 	}
-	if err := t.metadataTx.Commit(ctx, "[metadata] "+message); err != nil {
-		return fmt.Errorf("commit metadata: %w", err)
+	if err := t.queueTx.Commit(ctx, "[queue] "+message); err != nil {
+		return fmt.Errorf("commit queue: %w", err)
 	}
 	return nil
 }
@@ -171,6 +172,6 @@ func (t *splitTransaction) Commit(ctx context.Context, message string) error {
 func (t *splitTransaction) Rollback(ctx context.Context) error {
 	return errors.Join(
 		t.contentTx.Rollback(ctx),
-		t.metadataTx.Rollback(ctx),
+		t.queueTx.Rollback(ctx),
 	)
 }

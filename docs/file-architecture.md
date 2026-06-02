@@ -155,6 +155,26 @@ Queue files hold pages waiting to be synced. Files are processed in order and de
 - Large batches are split across multiple files
 - Sequential numbering ensures FIFO processing
 
+### Optional Separate Queue Branch
+
+When `NTN_QUEUE_BRANCH` is set, only `.notion-sync/queue/` is committed to that
+branch; everything else — page content, `.notion-sync/ids/` and
+`.notion-sync/state.json` — stays on the main branch (`NTN_GIT_BRANCH`).
+
+| Path | Branch |
+|------|--------|
+| Page content (`tech/…`, `root.md`, …) | main |
+| `.notion-sync/ids/` | main |
+| `.notion-sync/state.json` | main |
+| `.notion-sync/queue/` | queue branch |
+
+This isolates the high-frequency "queued page" commits on a dedicated branch so
+the main branch history contains only meaningful content and registry changes.
+Internally the queue branch is checked out into a sibling working directory
+(`<store-path>-queue`) so the main working tree never contains — and therefore
+never commits — the queue checkout. The queue branch is created automatically if
+it does not yet exist on the remote.
+
 ## File Path Stability
 
 File paths **never change** when pages are renamed in Notion:

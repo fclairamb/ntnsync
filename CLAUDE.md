@@ -31,6 +31,7 @@ NTN_COMMIT=true ./ntnsync sync                  # Process queue, commit
 - `NTN_COMMIT=true` - Enable automatic git commit after changes
 - `NTN_COMMIT_PERIOD=1m` - Commit periodically during sync (e.g., every 1 minute)
 - `NTN_PUSH=true/false` - Push to remote (defaults to true when `NTN_GIT_URL` is set)
+- `NTN_QUEUE_BRANCH=queue` - Commit `.notion-sync/queue` to a separate branch (ids/state/content stay on the main branch); auto-created if missing
 
 **Logging environment variables**:
 - `NTN_LOG_FORMAT=text|json` - Log format (default: text, use json for CI/CD)
