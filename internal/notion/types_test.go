@@ -27,7 +27,7 @@ func TestUserFormat(t *testing.T) {
 			name: "person with email",
 			user: &User{
 				ID:   "abc12345-6789-abcd-efgh",
-				Type: "person",
+				Type: userTypePerson,
 				Name: "John Doe",
 				Person: &Person{
 					Email: "john@example.com",
@@ -39,7 +39,7 @@ func TestUserFormat(t *testing.T) {
 			name: "person without email",
 			user: &User{
 				ID:   "def67890-1234-abcd-efgh",
-				Type: "person",
+				Type: userTypePerson,
 				Name: "Jane Smith",
 			},
 			want: "Jane Smith [def67890]",
@@ -48,7 +48,7 @@ func TestUserFormat(t *testing.T) {
 			name: "person with nil person struct",
 			user: &User{
 				ID:     "ghi11111-2222-3333-4444",
-				Type:   "person",
+				Type:   userTypePerson,
 				Name:   "Bob Wilson",
 				Person: nil,
 			},
@@ -58,7 +58,7 @@ func TestUserFormat(t *testing.T) {
 			name: "person with empty email",
 			user: &User{
 				ID:   "jkl55555-6666-7777-8888",
-				Type: "person",
+				Type: userTypePerson,
 				Name: "Alice Brown",
 				Person: &Person{
 					Email: "",
@@ -124,13 +124,13 @@ func TestParseRichTextToMarkdown_UserMention(t *testing.T) {
 			name: "user mention with full info",
 			richText: []RichText{
 				{
-					Type:      "mention",
+					Type:      richTextTypeMention,
 					PlainText: "@John Doe",
 					Mention: &Mention{
 						Type: "user",
 						User: &User{
 							ID:   "abc12345-6789",
-							Type: "person",
+							Type: userTypePerson,
 							Name: "John Doe",
 							Person: &Person{
 								Email: "john@example.com",
@@ -145,13 +145,13 @@ func TestParseRichTextToMarkdown_UserMention(t *testing.T) {
 			name: "user mention without email",
 			richText: []RichText{
 				{
-					Type:      "mention",
+					Type:      richTextTypeMention,
 					PlainText: "@Jane",
 					Mention: &Mention{
 						Type: "user",
 						User: &User{
 							ID:   "def67890-1234",
-							Type: "person",
+							Type: userTypePerson,
 							Name: "Jane Smith",
 						},
 					},
@@ -167,13 +167,13 @@ func TestParseRichTextToMarkdown_UserMention(t *testing.T) {
 					PlainText: "Hello ",
 				},
 				{
-					Type:      "mention",
+					Type:      richTextTypeMention,
 					PlainText: "@John",
 					Mention: &Mention{
 						Type: "user",
 						User: &User{
 							ID:   "abc12345-6789",
-							Type: "person",
+							Type: userTypePerson,
 							Name: "John Doe",
 							Person: &Person{
 								Email: "john@example.com",

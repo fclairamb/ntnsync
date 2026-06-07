@@ -5,7 +5,10 @@ import (
 	"fmt"
 )
 
-const logKeyBlockID = "block_id"
+const (
+	logKeyBlockID = "block_id"
+	logKeyDepth   = "depth"
+)
 
 // GetBlock retrieves a block by ID.
 func (c *Client) GetBlock(ctx context.Context, blockID string) (*Block, error) {
@@ -67,7 +70,7 @@ func (c *Client) GetAllBlockChildrenWithLimit(
 			ctx = WithPageID(ctx, blockID)
 		}
 
-		logArgs := []any{logKeyBlockID, blockID, "depth", depth}
+		logArgs := []any{logKeyBlockID, blockID, logKeyDepth, depth}
 		if maxDepth > 0 {
 			logArgs = append(logArgs, "max_depth", maxDepth)
 		}
@@ -95,7 +98,7 @@ func (c *Client) GetAllBlockChildrenWithLimit(
 						infoArgs := []any{
 							logKeyBlockID, block.ID,
 							"block_type", block.Type,
-							"depth", depth,
+							logKeyDepth, depth,
 							"max_depth", maxDepth,
 						}
 						if pageID := PageIDFromContext(ctx); pageID != "" {
@@ -105,7 +108,7 @@ func (c *Client) GetAllBlockChildrenWithLimit(
 					} else {
 						children, err := fetchRecursive(block.ID, depth+1)
 						if err != nil {
-							warnArgs := []any{logKeyBlockID, block.ID, "depth", depth + 1, "error", err}
+							warnArgs := []any{logKeyBlockID, block.ID, logKeyDepth, depth + 1, "error", err}
 							if pageID := PageIDFromContext(ctx); pageID != "" {
 								warnArgs = append(warnArgs, "page_id", pageID)
 							}
@@ -125,7 +128,7 @@ func (c *Client) GetAllBlockChildrenWithLimit(
 			cursor = *result.NextCursor
 		}
 
-		doneLogArgs := []any{logKeyBlockID, blockID, "depth", depth, "count", len(allBlocks)}
+		doneLogArgs := []any{logKeyBlockID, blockID, logKeyDepth, depth, "count", len(allBlocks)}
 		if pageID := PageIDFromContext(ctx); pageID != "" {
 			doneLogArgs = append(doneLogArgs, "page_id", pageID)
 		}

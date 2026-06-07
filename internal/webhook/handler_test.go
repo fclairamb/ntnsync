@@ -158,7 +158,7 @@ func TestHandleWebhook_Success(t *testing.T) {
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
 	event := Event{
-		Type:   "page.content_updated",
+		Type:   eventTypePageContentUpdated,
 		Entity: &Entity{ID: "test-page-id", Type: "page"},
 		Data: EventData{
 			Parent: &Parent{ID: "parent-id", Type: "workspace"},
@@ -189,7 +189,7 @@ func TestHandleWebhook_InvalidSignature(t *testing.T) {
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
 	event := Event{
-		Type:   "page.content_updated",
+		Type:   eventTypePageContentUpdated,
 		Entity: &Entity{ID: "test-page-id", Type: "page"},
 	}
 	body, err := json.Marshal(event)

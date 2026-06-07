@@ -23,6 +23,9 @@ const (
 	maxTimestampAge = 5 * time.Minute
 
 	defaultFolderName = "default"
+
+	// eventTypePageContentUpdated is the Notion webhook event type for page content changes.
+	eventTypePageContentUpdated = "page.content_updated"
 )
 
 // Event represents a Notion webhook event payload.
@@ -218,20 +221,20 @@ func (h *Handler) verifySignature(req *http.Request) bool {
 	timestamp := req.Header.Get("Notion-Webhook-Timestamp")
 
 	if signature == "" || timestamp == "" {
-		h.logger.Debug("missing signature or timestamp headers")
+		h.logger.DebugContext(req.Context(), "missing signature or timestamp headers")
 		return false
 	}
 
 	// Validate timestamp
 	if !h.validateTimestamp(timestamp) {
-		h.logger.Debug("timestamp validation failed", "timestamp", timestamp)
+		h.logger.DebugContext(req.Context(), "timestamp validation failed", "timestamp", timestamp)
 		return false
 	}
 
 	// Read body
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		h.logger.Debug("failed to read body", "error", err)
+		h.logger.DebugContext(req.Context(), "failed to read body", "error", err)
 		return false
 	}
 	req.Body = io.NopCloser(bytes.NewBuffer(body))
@@ -276,7 +279,7 @@ func (h *Handler) processEvent(ctx context.Context, event *Event) {
 	h.queueManager.SetTransaction(transaction)
 
 	switch event.Type {
-	case "page.created", "page.updated", "page.content_updated", "page.properties_updated":
+	case "page.created", "page.updated", eventTypePageContentUpdated, "page.properties_updated":
 		h.handlePageChange(ctx, event, transaction)
 	case "page.deleted", "page.undeleted":
 		h.handlePageDeletion(ctx, event)
@@ -293,7 +296,7 @@ func (h *Handler) processEvent(ctx context.Context, event *Event) {
 	}
 }
 
-// handlePageChange handles page.created, page.updated, and page.content_updated events.
+// handlePageChange handles page.created, page.updated, and eventTypePageContentUpdated events.
 func (h *Handler) handlePageChange(ctx context.Context, event *Event, transaction store.Transaction) {
 	pageID := event.GetEntityID()
 	if pageID == "" {

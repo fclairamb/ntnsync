@@ -223,6 +223,10 @@ type BotOwner struct {
 const (
 	shortIDLength = 8 // number of characters to use for short user IDs
 	propTypeTitle = "title"
+
+	// User and rich-text type constants.
+	userTypePerson    = "person"
+	richTextTypeMention = "mention"
 )
 
 // Format returns the user in a human-readable format.
@@ -247,7 +251,7 @@ func (u *User) Format() string {
 	}
 
 	// Person with email: "Name <email> [id]"
-	if u.Type == "person" && u.Person != nil && u.Person.Email != "" {
+	if u.Type == userTypePerson && u.Person != nil && u.Person.Email != "" {
 		return fmt.Sprintf("%s <%s> [%s]", name, u.Person.Email, shortID)
 	}
 
@@ -692,7 +696,7 @@ func ParseRichTextToMarkdown(richText []RichText) string {
 		text := item.PlainText
 
 		// Handle user mentions with formatted user info
-		if item.Type == "mention" && item.Mention != nil && item.Mention.User != nil {
+		if item.Type == richTextTypeMention && item.Mention != nil && item.Mention.User != nil {
 			text = "@" + item.Mention.User.Format()
 		}
 

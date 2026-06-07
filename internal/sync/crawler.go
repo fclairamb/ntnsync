@@ -21,6 +21,16 @@ const (
 
 	defaultUntitledStr = "untitled"
 
+	// Notion object types used across the sync package.
+	notionTypePage     = "page"
+	notionTypeDatabase = "database"
+
+	// Notion parent field keys.
+	notionKeyPageID = "page_id"
+
+	// Notion property keys.
+	notionKeyTitle = "title"
+
 	// Filename conflict resolution.
 	shortIDLength = 4 // Number of characters to use from page ID in conflict resolution
 
