@@ -221,11 +221,9 @@ type BotOwner struct {
 }
 
 const (
-	shortIDLength = 8 // number of characters to use for short user IDs
-	propTypeTitle = "title"
-
-	// User and rich-text type constants.
-	userTypePerson    = "person"
+	shortIDLength       = 8 // number of characters to use for short user IDs
+	propTypeTitle       = "title"
+	userTypePerson      = "person"
 	richTextTypeMention = "mention"
 )
 

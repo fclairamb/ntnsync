@@ -729,7 +729,8 @@ func serveCommand() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			secret := cmd.String("secret")
 			if secret == "" {
-				slog.WarnContext(ctx, "webhook secret not configured - signature verification disabled (set --secret or NTN_WEBHOOK_SECRET)")
+				slog.WarnContext(ctx, "webhook secret not configured - signature verification disabled"+
+					" (set --secret or NTN_WEBHOOK_SECRET)")
 			}
 
 			// Setup store (webhook server needs it for queue management)
