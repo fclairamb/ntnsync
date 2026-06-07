@@ -181,6 +181,7 @@ linters:
           - forcetypeassert
           - funlen
           - gochecknoglobals
+          - goconst
           - gocritic
           - lll
           - noctx
@@ -193,6 +194,7 @@ linters:
           - forcetypeassert
           - funlen
           - gochecknoglobals
+          - goconst
           - gocritic
           - lll
           - noctx

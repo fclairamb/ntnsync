@@ -16,6 +16,9 @@ import (
 	"github.com/fclairamb/ntnsync/internal/apperrors"
 )
 
+// gitRemoteOrigin is the conventional git remote name for the primary remote.
+const gitRemoteOrigin = "origin"
+
 // StorageMode defines the storage mode for git operations.
 type StorageMode string
 
@@ -217,7 +220,7 @@ func (c *RemoteConfig) TestConnection(ctx context.Context) error {
 
 	// Try to list remote references to verify connectivity
 	rem := git.NewRemote(nil, &config.RemoteConfig{
-		Name: "origin",
+		Name: gitRemoteOrigin,
 		URLs: []string{c.URL},
 	})
 

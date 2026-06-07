@@ -297,11 +297,11 @@ func (c *Crawler) processNewFormatEntry(
 		if err != nil {
 			if notion.IsPermanentError(err) {
 				c.logger.WarnContext(ctx, "dropping page from queue (permanent error)",
-					"page_id", pageID, "error", err)
+					notionKeyPageID, pageID, "error", err)
 				stats.totalDropped++
 				continue
 			}
-			c.logger.ErrorContext(ctx, "failed to process page (will retry)", "page_id", pageID, "error", err)
+			c.logger.ErrorContext(ctx, "failed to process page (will retry)", notionKeyPageID, pageID, "error", err)
 			remaining = append(remaining, *queuePage)
 			continue
 		}
@@ -349,11 +349,11 @@ func (c *Crawler) processLegacyFormatEntry(
 		if err != nil {
 			if notion.IsPermanentError(err) {
 				c.logger.WarnContext(ctx, "dropping page from queue (permanent error)",
-					"page_id", pageID, "error", err)
+					notionKeyPageID, pageID, "error", err)
 				stats.totalDropped++
 				continue
 			}
-			c.logger.ErrorContext(ctx, "failed to process page (will retry)", "page_id", pageID, "error", err)
+			c.logger.ErrorContext(ctx, "failed to process page (will retry)", notionKeyPageID, pageID, "error", err)
 			remaining = append(remaining, pageID)
 			continue
 		}
@@ -382,8 +382,8 @@ func (c *Crawler) shouldSkipNewFormatPage(ctx context.Context, pageID string, qu
 	// Page exists - check if it needs updating by comparing with queued last_edited
 	if !queueLastEdited.After(reg.LastEdited) {
 		c.logger.DebugContext(ctx, "skipping unchanged page",
-			"page_id", pageID,
-			"title", reg.Title,
+			notionKeyPageID, pageID,
+			notionKeyTitle, reg.Title,
 			"queue_last_edited", queueLastEdited,
 			"registry_last_edited", reg.LastEdited)
 		return true
@@ -415,8 +415,8 @@ func (c *Crawler) shouldSkipLegacyPage(ctx context.Context, pageID string, isIni
 	// Init mode is for discovering new pages, not updating existing ones.
 	// Use "update" queue type for forcing re-sync of existing pages.
 	c.logger.DebugContext(ctx, "skipping existing page in init mode (using cache)",
-		"page_id", pageID,
-		"title", reg.Title)
+		notionKeyPageID, pageID,
+		notionKeyTitle, reg.Title)
 	return legacyPageSkip
 }
 
@@ -474,7 +474,7 @@ func (c *Crawler) resolveBlockParentWithLogging(
 //nolint:funlen // Parent resolution with multiple edge cases
 func (c *Crawler) resolveAndFetchParent(
 	ctx context.Context,
-	itemID, itemType string, // for logging (e.g., "page_id" or "database_id")
+	itemID, itemType string, // for logging (e.g., notionKeyPageID or "database_id")
 	parentID, expectedParentID, folder string,
 	isInit, isRoot bool,
 ) (*parentResolutionResult, error) {
@@ -671,7 +671,7 @@ func (c *Crawler) writeAndRegister(
 		ID:     params.itemID,
 		Parent: params.parent,
 		Properties: notion.Properties{
-			"title": {Type: "title", Title: []notion.RichText{{PlainText: params.title}}},
+			notionKeyTitle: {Type: notionKeyTitle, Title: []notion.RichText{{PlainText: params.title}}},
 		},
 	}
 	filePath := c.computeFilePath(ctx, syntheticPage, params.folder, isRoot, parentID)
@@ -696,7 +696,7 @@ func (c *Crawler) writeAndRegister(
 	totalDuration := time.Since(startTime)
 	c.logger.InfoContext(ctx, "downloaded "+params.itemType,
 		logKey, params.itemID,
-		"title", params.title,
+		notionKeyTitle, params.title,
 		"path", filePath,
 		"total_ms", totalDuration.Milliseconds(),
 		"download_ms", params.downloadDuration.Milliseconds(),
@@ -788,7 +788,7 @@ func (c *Crawler) processPage(
 ) (int, error) {
 	startTime := time.Now()
 	c.logger.DebugContext(ctx, "processing page",
-		"page_id", pageID,
+		notionKeyPageID, pageID,
 		"folder", folder,
 		"is_init", isInit,
 		"expected_parent_id", expectedParentID)
@@ -797,7 +797,7 @@ func (c *Crawler) processPage(
 	enabled, rootID, err := c.isRootEnabled(ctx, pageID)
 	if err == nil && !enabled && rootID != "" {
 		c.logger.InfoContext(ctx, "skipping item with disabled root",
-			"page_id", pageID,
+			notionKeyPageID, pageID,
 			"root_id", rootID)
 		return 0, nil
 	}
@@ -813,11 +813,11 @@ func (c *Crawler) processPage(
 	var params *writeAndRegisterParams
 
 	if isDatabase {
-		c.logger.InfoContext(ctx, "detected database, processing as database", "page_id", pageID)
+		c.logger.InfoContext(ctx, "detected database, processing as database", notionKeyPageID, pageID)
 		params, folder, err = c.buildDatabaseParams(ctx, pageID, folder, fetchStart)
 	} else {
 		c.logger.DebugContext(ctx, "fetched page metadata",
-			"page_id", pageID, "duration_ms", time.Since(fetchStart).Milliseconds())
+			notionKeyPageID, pageID, "duration_ms", time.Since(fetchStart).Milliseconds())
 		c.enrichUsers(ctx, &page.CreatedBy, &page.LastEditedBy)
 		params, folder, err = c.buildPageParams(ctx, page, pageID, folder, fetchStart)
 	}
@@ -860,7 +860,7 @@ func (c *Crawler) buildPageParams(
 	blocks := blockResult.Blocks
 	fetchBlocksDuration := time.Since(fetchBlocksStart)
 	logArgs := []any{
-		"page_id", pageID,
+		notionKeyPageID, pageID,
 		"block_count", len(blocks),
 		"duration_ms", fetchBlocksDuration.Milliseconds(),
 	}
@@ -879,7 +879,7 @@ func (c *Crawler) buildPageParams(
 
 	return &writeAndRegisterParams{
 		itemID:   pageID,
-		itemType: "page",
+		itemType: notionTypePage,
 		title:    page.Title(),
 		convert: func(filePath string, isRoot bool, parentID string) []byte {
 			return c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
@@ -887,7 +887,7 @@ func (c *Crawler) buildPageParams(
 				PageTitle:        page.Title(),
 				FilePath:         filePath,
 				LastSynced:       time.Now(),
-				NotionType:       "page",
+				NotionType:       notionTypePage,
 				IsRoot:           isRoot,
 				ParentID:         parentID,
 				FileProcessor:    c.makeFileProcessor(ctx, filePath, pageID),
@@ -938,7 +938,7 @@ func (c *Crawler) buildDatabaseParams(
 
 	return &writeAndRegisterParams{
 		itemID:   dbID,
-		itemType: "database",
+		itemType: notionTypeDatabase,
 		title:    database.GetTitle(),
 		convert: func(filePath string, isRoot bool, parentID string) []byte {
 			return c.converter.ConvertDatabase(database, dbPages, &converter.ConvertOptions{
@@ -946,7 +946,7 @@ func (c *Crawler) buildDatabaseParams(
 				PageTitle:        database.GetTitle(),
 				FilePath:         filePath,
 				LastSynced:       time.Now(),
-				NotionType:       "database",
+				NotionType:       notionTypeDatabase,
 				IsRoot:           isRoot,
 				ParentID:         parentID,
 				FileProcessor:    c.makeFileProcessor(ctx, filePath, dbID),
