@@ -147,7 +147,7 @@ func (p *DatabasePage) Title() string {
 		if err := json.Unmarshal(propData, &prop); err != nil {
 			continue
 		}
-		if prop.Type == "title" && len(prop.Title) > 0 {
+		if prop.Type == propTypeTitle && len(prop.Title) > 0 {
 			return ParseRichText(prop.Title)
 		}
 	}
@@ -176,7 +176,7 @@ func (p *DatabasePage) ToPage() *Page {
 
 // Title extracts the title from page properties.
 func (p *Page) Title() string {
-	if title, ok := p.Properties["title"]; ok {
+	if title, ok := p.Properties[propTypeTitle]; ok {
 		return ParseRichText(title.Title)
 	}
 	if title, ok := p.Properties["Name"]; ok {
@@ -185,7 +185,7 @@ func (p *Page) Title() string {
 	// Try to find any title property
 	for key := range p.Properties {
 		prop := p.Properties[key]
-		if prop.Type == "title" && len(prop.Title) > 0 {
+		if prop.Type == propTypeTitle && len(prop.Title) > 0 {
 			return ParseRichText(prop.Title)
 		}
 	}
@@ -220,8 +220,10 @@ type BotOwner struct {
 	User *User  `json:"user,omitempty"`
 }
 
-// shortIDLength is the number of characters to use for short user IDs.
-const shortIDLength = 8
+const (
+	shortIDLength = 8 // number of characters to use for short user IDs
+	propTypeTitle = "title"
+)
 
 // Format returns the user in a human-readable format.
 // Format: "Name <email> [short_id]"
