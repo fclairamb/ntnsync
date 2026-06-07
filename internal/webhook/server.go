@@ -170,7 +170,7 @@ func loggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 		}
 
 		// Log incoming request
-		logger.Info("http request",
+		logger.InfoContext(req.Context(), "http request",
 			"method", req.Method,
 			"path", req.URL.Path,
 			"remote_addr", req.RemoteAddr,
@@ -180,7 +180,7 @@ func loggingMiddleware(next http.Handler, logger *slog.Logger) http.Handler {
 		next.ServeHTTP(wrapped, req)
 
 		// Log response
-		logger.Info("http response",
+		logger.InfoContext(req.Context(), "http response",
 			"method", req.Method,
 			"path", req.URL.Path,
 			"status", wrapped.statusCode,

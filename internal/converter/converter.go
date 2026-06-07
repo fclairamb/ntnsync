@@ -16,9 +16,21 @@ const (
 	blockTypeFile      = "file"
 	defaultUntitledStr = "untitled"
 
+	// Block type constants.
+	blockTypePage             = "page"
+	blockTypeParagraph        = "paragraph"
+	blockTypeHeading1         = "heading_1"
+	blockTypeHeading2         = "heading_2"
+	blockTypeHeading3         = "heading_3"
+	blockTypeBulletedListItem = "bulleted_list_item"
+	blockTypeNumberedListItem = "numbered_list_item"
+	blockTypeToDo             = "to_do"
+	blockTypeImage            = "image"
+
 	// Property type constants.
 	propTypeNumber = "number"
 	propTypeDate   = "date"
+	propTypeTitle  = "title"
 )
 
 // Converter converts Notion pages and blocks to Markdown.
@@ -189,7 +201,7 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 	// Notion type (page or database)
 	notionType := opts.NotionType
 	if notionType == "" {
-		notionType = "page"
+		notionType = blockTypePage
 	}
 	fmt.Fprintf(&builder, "notion_type: %s\n", notionType)
 
@@ -273,7 +285,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 	indent := strings.Repeat("  ", depth)
 
 	switch block.Type {
-	case "paragraph":
+	case blockTypeParagraph:
 		if block.Paragraph == nil {
 			return "\n"
 		}
@@ -285,7 +297,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		result += c.convertChildren(block.Children, depth, opts)
 		return result
 
-	case "heading_1":
+	case blockTypeHeading1:
 		if block.Heading1 == nil {
 			return ""
 		}
@@ -300,7 +312,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		}
 		return fmt.Sprintf("# %s\n", text)
 
-	case "heading_2":
+	case blockTypeHeading2:
 		if block.Heading2 == nil {
 			return ""
 		}
@@ -315,7 +327,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		}
 		return fmt.Sprintf("## %s\n", text)
 
-	case "heading_3":
+	case blockTypeHeading3:
 		if block.Heading3 == nil {
 			return ""
 		}
@@ -330,7 +342,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		}
 		return fmt.Sprintf("### %s\n", text)
 
-	case "bulleted_list_item":
+	case blockTypeBulletedListItem:
 		if block.BulletedListItem == nil {
 			return ""
 		}
@@ -339,7 +351,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		result += c.convertChildren(block.Children, depth+1, opts)
 		return result
 
-	case "numbered_list_item":
+	case blockTypeNumberedListItem:
 		if block.NumberedListItem == nil {
 			return ""
 		}
@@ -348,7 +360,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 		result += c.convertChildren(block.Children, depth+1, opts)
 		return result
 
-	case "to_do":
+	case blockTypeToDo:
 		if block.ToDo == nil {
 			return ""
 		}
@@ -420,7 +432,7 @@ func (c *Converter) convertBlock(block *notion.Block, depth int, opts *ConvertOp
 	case "divider":
 		return "---\n"
 
-	case "image":
+	case blockTypeImage:
 		if block.Image == nil {
 			return ""
 		}
@@ -627,9 +639,9 @@ func (c *Converter) getFileURL(file *notion.FileBlock) string {
 
 // isListItem checks if a block is a list item.
 func (c *Converter) isListItem(block *notion.Block) bool {
-	return block.Type == "bulleted_list_item" ||
-		block.Type == "numbered_list_item" ||
-		block.Type == "to_do"
+	return block.Type == blockTypeBulletedListItem ||
+		block.Type == blockTypeNumberedListItem ||
+		block.Type == blockTypeToDo
 }
 
 // formatIcon formats an icon for frontmatter output.
@@ -663,7 +675,7 @@ func extractPropertyValue(prop *notion.Property) any {
 	}
 
 	switch prop.Type {
-	case "title":
+	case propTypeTitle:
 		// Skip title - it's handled separately in frontmatter
 		return nil
 	case "rich_text":

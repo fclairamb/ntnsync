@@ -70,7 +70,7 @@ func (c *Crawler) finalizeAdd(ctx context.Context, params *finalizeAddParams) er
 	logKey := params.itemType + "_id"
 	c.logger.InfoContext(ctx, "downloaded "+params.itemType,
 		logKey, params.itemID,
-		"title", params.title,
+		notionKeyTitle, params.title,
 		"path", params.filePath)
 
 	if err := c.saveState(ctx); err != nil {
@@ -141,7 +141,7 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 	}
 
 	c.logger.InfoContext(ctx, "found database",
-		"title", database.GetTitle(),
+		notionKeyTitle, database.GetTitle(),
 		"database_id", databaseID)
 
 	// Query all pages in the database
@@ -168,7 +168,7 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 		PageTitle:     database.GetTitle(),
 		FilePath:      filePath,
 		LastSynced:    time.Now(),
-		NotionType:    "database",
+		NotionType:    notionTypeDatabase,
 		IsRoot:        true,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, dbID),
 	})
@@ -179,13 +179,13 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 		pageID := normalizePageID(dbPage.ID)
 		children = append(children, pageID)
 		c.logger.DebugContext(ctx, "found database page",
-			"page_id", pageID,
-			"title", dbPage.Title())
+			notionKeyPageID, pageID,
+			notionKeyTitle, dbPage.Title())
 	}
 
 	return c.finalizeAdd(ctx, &finalizeAddParams{
 		itemID:      dbID,
-		itemType:    "database",
+		itemType:    notionTypeDatabase,
 		title:       database.GetTitle(),
 		folder:      folder,
 		filePath:    filePath,
@@ -199,7 +199,7 @@ func (c *Crawler) AddDatabase(ctx context.Context, databaseID, folder string, fo
 // AddRootPage adds a page as a root page in a folder and queues it for syncing.
 func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceUpdate bool) error {
 	c.logger.InfoContext(ctx, "adding root page",
-		"page_id", pageID,
+		notionKeyPageID, pageID,
 		"folder", folder,
 		"force_update", forceUpdate)
 
@@ -226,7 +226,7 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 		PageTitle:     page.Title(),
 		FilePath:      filePath,
 		LastSynced:    time.Now(),
-		NotionType:    "page",
+		NotionType:    notionTypePage,
 		IsRoot:        true,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
 	})
@@ -235,7 +235,7 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 
 	return c.finalizeAdd(ctx, &finalizeAddParams{
 		itemID:      pageID,
-		itemType:    "page",
+		itemType:    notionTypePage,
 		title:       page.Title(),
 		folder:      folder,
 		filePath:    filePath,
@@ -251,7 +251,7 @@ func (c *Crawler) AddRootPage(ctx context.Context, pageID, folder string, forceU
 // If folder is empty, it will be determined from the parent chain.
 func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) error {
 	c.logger.InfoContext(ctx, "getting page",
-		"page_id", pageID,
+		notionKeyPageID, pageID,
 		"folder", folder)
 
 	// Ensure transaction is available
@@ -283,7 +283,7 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 	}
 
 	c.logger.InfoContext(ctx, "traced parent chain",
-		"page_id", pageID,
+		notionKeyPageID, pageID,
 		"folder", targetFolder,
 		"missing_parents", len(parentChain))
 
@@ -296,8 +296,7 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 	c.state.AddFolder(targetFolder)
 
 	// Fetch and save all missing parents in the chain (from root to child)
-	for i := len(parentChain) - 1; i >= 0; i-- {
-		parentPage := parentChain[i]
+	for _, parentPage := range slices.Backward(parentChain) {
 		if err := c.savePageFromNotion(ctx, parentPage, targetFolder, false); err != nil {
 			return fmt.Errorf("save parent page %s: %w", parentPage.ID, err)
 		}
@@ -314,8 +313,8 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 	}
 
 	c.logger.InfoContext(ctx, "page retrieved successfully",
-		"page_id", pageID,
-		"title", page.Title(),
+		notionKeyPageID, pageID,
+		notionKeyTitle, page.Title(),
 		"folder", targetFolder)
 
 	return nil
@@ -401,7 +400,7 @@ func (c *Crawler) fetchDatabaseAsPage(ctx context.Context, databaseID string) (*
 	// Convert database to a page-like structure
 	// We create a synthetic Page with the database's metadata
 	page := &notion.Page{
-		Object:         "page",
+		Object:         notionTypePage,
 		ID:             database.ID,
 		CreatedTime:    database.CreatedTime,
 		LastEditedTime: database.LastEditedTime,
@@ -421,7 +420,7 @@ func (c *Crawler) fetchDatabaseAsPage(ctx context.Context, databaseID string) (*
 }
 
 // resolveBlockToPage traces a block's parent chain until it finds a page or database.
-// Returns the page/database ID and its type ("page_id" or "database_id").
+// Returns the page/database ID and its type (notionKeyPageID or "database_id").
 // If the block chain leads to workspace, returns empty string.
 func (c *Crawler) resolveBlockToPage(ctx context.Context, blockID string) (string, string, error) {
 	currentID := blockID
@@ -434,12 +433,12 @@ func (c *Crawler) resolveBlockToPage(ctx context.Context, blockID string) (strin
 		}
 
 		switch block.Parent.Type {
-		case "page_id":
+		case notionKeyPageID:
 			c.logger.DebugContext(ctx, "resolved block to page",
 				"block_id", blockID,
-				"page_id", block.Parent.PageID,
+				notionKeyPageID, block.Parent.PageID,
 				"depth", i+1)
-			return normalizePageID(block.Parent.PageID), "page_id", nil
+			return normalizePageID(block.Parent.PageID), notionKeyPageID, nil
 		case "database_id":
 			c.logger.DebugContext(ctx, "resolved block to database",
 				"block_id", blockID,
@@ -504,7 +503,7 @@ func (c *Crawler) writeRegistryAndQueue(
 	logKey := itemType + "_id"
 	c.logger.InfoContext(ctx, "saved "+itemType,
 		logKey, itemID,
-		"title", title,
+		notionKeyTitle, title,
 		"path", filePath)
 
 	now := time.Now()
@@ -552,8 +551,8 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 	pageID := normalizePageID(page.ID)
 
 	c.logger.DebugContext(ctx, "saving page",
-		"page_id", pageID,
-		"title", page.Title(),
+		notionKeyPageID, pageID,
+		notionKeyTitle, page.Title(),
 		"folder", folder,
 		"is_root", isRoot)
 
@@ -561,7 +560,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 	// If it fails with database error, save as database instead
 	blocks, err := c.client.GetAllBlockChildren(ctx, pageID, 0)
 	if err != nil && strings.Contains(err.Error(), "is a database, not a page") {
-		c.logger.DebugContext(ctx, "detected database, saving as database", "page_id", pageID)
+		c.logger.DebugContext(ctx, "detected database, saving as database", notionKeyPageID, pageID)
 
 		database, dbErr := c.client.GetDatabase(ctx, pageID)
 		if dbErr != nil {
@@ -578,7 +577,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 			ID:     database.ID,
 			Parent: database.Parent,
 			Properties: notion.Properties{
-				"title": {Type: "title", Title: database.Title},
+				notionKeyTitle: {Type: notionKeyTitle, Title: database.Title},
 			},
 		}
 		filePath := c.computeFilePath(ctx, syntheticPage, folder, isRoot, parentID)
@@ -588,7 +587,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 			PageTitle:     database.GetTitle(),
 			FilePath:      filePath,
 			LastSynced:    time.Now(),
-			NotionType:    "database",
+			NotionType:    notionTypeDatabase,
 			IsRoot:        isRoot,
 			ParentID:      parentID,
 			FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
@@ -599,14 +598,14 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 			children = append(children, normalizePageID(dbPages[i].ID))
 		}
 
-		return c.writeRegistryAndQueue(ctx, filePath, pageID, "database",
+		return c.writeRegistryAndQueue(ctx, filePath, pageID, notionTypeDatabase,
 			database.GetTitle(), folder, parentID, database.LastEditedTime, isRoot, content, children)
 	}
 	if err != nil {
 		return fmt.Errorf("fetch blocks: %w", err)
 	}
 
-	parentID := c.resolveParentID(ctx, pageID, "page_id", page.Parent)
+	parentID := c.resolveParentID(ctx, pageID, notionKeyPageID, page.Parent)
 	filePath := c.computeFilePath(ctx, page, folder, isRoot, parentID)
 
 	content := c.converter.ConvertWithOptions(page, blocks, &converter.ConvertOptions{
@@ -614,7 +613,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 		PageTitle:     page.Title(),
 		FilePath:      filePath,
 		LastSynced:    time.Now(),
-		NotionType:    "page",
+		NotionType:    notionTypePage,
 		IsRoot:        isRoot,
 		ParentID:      parentID,
 		FileProcessor: c.makeFileProcessor(ctx, filePath, pageID),
@@ -622,7 +621,7 @@ func (c *Crawler) savePageFromNotion(ctx context.Context, page *notion.Page, fol
 
 	children := c.findChildPages(blocks)
 
-	return c.writeRegistryAndQueue(ctx, filePath, pageID, "page",
+	return c.writeRegistryAndQueue(ctx, filePath, pageID, notionTypePage,
 		page.Title(), folder, parentID, page.LastEditedTime, isRoot, content, children)
 }
 
