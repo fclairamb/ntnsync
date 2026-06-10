@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.1](https://github.com/fclairamb/ntnsync/compare/v0.8.0...v0.8.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* **converter:** emit frontmatter properties in alphabetical order ([#117](https://github.com/fclairamb/ntnsync/issues/117)) ([69d63d7](https://github.com/fclairamb/ntnsync/commit/69d63d7eb15f4747fadc73870c15d698e38fa489))
+* **deps:** update module github.com/urfave/cli/v3 to v3.9.1 ([#119](https://github.com/fclairamb/ntnsync/issues/119)) ([62d4c7c](https://github.com/fclairamb/ntnsync/commit/62d4c7cbfb76d01d2ac64b7e90e1d912115379bb))
+
 ## [0.8.0](https://github.com/fclairamb/ntnsync/compare/v0.7.1...v0.8.0) (2026-06-09)
 
 
