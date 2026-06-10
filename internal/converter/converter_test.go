@@ -785,3 +785,40 @@ func TestConvertWithOptions_DownloadDuration(t *testing.T) {
 		}
 	})
 }
+
+func TestConvert_PropertiesAlphabeticalOrder(t *testing.T) {
+	t.Parallel()
+
+	c := NewConverter()
+	richText := func(text string) notion.Property {
+		return notion.Property{
+			Type: "rich_text",
+			RichText: []notion.RichText{
+				{Type: "text", PlainText: text},
+			},
+		}
+	}
+	page := &notion.Page{
+		ID:             "123e4567-e89b-12d3-a456-426614174000",
+		LastEditedTime: time.Date(2024, 1, 15, 10, 30, 0, 0, time.UTC),
+		URL:            "https://notion.so/test",
+		Parent:         notion.Parent{Type: "database_id", DatabaseID: "db123"},
+		Properties: map[string]notion.Property{
+			"Zebra":  richText("z"),
+			"alpha":  richText("a"),
+			"Mango":  richText("m"),
+			"Banana": richText("b"),
+		},
+	}
+
+	result := string(c.Convert(page, []notion.Block{}))
+
+	wantProps := "properties:\n" +
+		"  Banana: \"b\"\n" +
+		"  Mango: \"m\"\n" +
+		"  Zebra: \"z\"\n" +
+		"  alpha: \"a\"\n"
+	if !strings.Contains(result, wantProps) {
+		t.Errorf("Convert() properties not in alphabetical order, want:\n%s\ngot:\n%s", wantProps, result)
+	}
+}

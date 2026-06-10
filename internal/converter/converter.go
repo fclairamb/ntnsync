@@ -4,6 +4,7 @@ package converter
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -256,7 +257,12 @@ func (c *Converter) generateFrontmatter(page *notion.Page, opts *ConvertOptions)
 	// Include properties for database pages (pages whose parent is a database)
 	if page.Parent.DatabaseID != "" && len(page.Properties) > 0 {
 		propsBuilder := strings.Builder{}
+		names := make([]string, 0, len(page.Properties))
 		for name := range page.Properties {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+		for _, name := range names {
 			prop := page.Properties[name]
 			value := extractPropertyValue(&prop)
 			if value == nil {
