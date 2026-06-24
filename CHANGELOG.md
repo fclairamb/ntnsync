@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.2](https://github.com/fclairamb/ntnsync/compare/v0.8.1...v0.8.2) (2026-06-24)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/urfave/cli/v3 to v3.10.0 ([#120](https://github.com/fclairamb/ntnsync/issues/120)) ([b166deb](https://github.com/fclairamb/ntnsync/commit/b166deb5a2a831737368c6ec394ce2c84be94ccb))
+* **sync:** normalize Notion page IDs to prevent duplicate pages ([#124](https://github.com/fclairamb/ntnsync/issues/124)) ([3d47533](https://github.com/fclairamb/ntnsync/commit/3d475333f18be7a42141d51c5cc971b4da00ee01))
+
 ## [0.8.1](https://github.com/fclairamb/ntnsync/compare/v0.8.0...v0.8.1) (2026-06-10)
 
 
