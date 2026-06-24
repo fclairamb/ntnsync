@@ -44,31 +44,56 @@ func loadRegistry[T any](ctx context.Context, crawler *Crawler, prefix, registry
 }
 
 // savePageRegistry saves a page registry file.
+//
+// It canonicalizes the IDs first so the registry filename and the stored `id`
+// (and `parent_id`) are always normalized, no matter which code path built the
+// registry — some callers construct it straight from a Notion API object whose
+// ID is in the dashed UUID form. This is the single choke point that guarantees
+// the dashed/dash-less mismatch (which silently duplicates pages) can never be
+// persisted.
 func (c *Crawler) savePageRegistry(ctx context.Context, reg *PageRegistry) error {
+	reg.ID = normalizePageID(reg.ID)
+	reg.ParentID = normalizePageID(reg.ParentID)
 	return saveRegistry(ctx, c, "page", reg.ID, reg)
 }
 
-// loadPageRegistry loads a page registry file.
-// Tries page-{id}.json format first, falls back to old format ({id}.json) for backward compatibility.
+// loadPageRegistry loads a page registry file, looking it up by the canonical
+// (normalized) ID regardless of the form the caller passes in.
+//
+// It tries, in order:
+//  1. page-{normalized}.json — the canonical location;
+//  2. page-{dashed-uuid}.json — legacy registries written before IDs were
+//     normalized on every code path (notably the webhook handler). Without this
+//     fallback such a page fails its file-path stability check on the next sync
+//     and gets written to a second, suffixed file;
+//  3. {normalized}.json — the oldest pre-"page-" prefix format.
 func (c *Crawler) loadPageRegistry(ctx context.Context, pageID string) (*PageRegistry, error) {
-	reg, err := loadRegistry[PageRegistry](ctx, c, "page", pageID)
-	if err != nil {
-		// Fall back to old format for backward compatibility
-		oldPath := filepath.Join(stateDir, idsDir, pageID+".json")
-		data, readErr := c.store.Read(ctx, oldPath)
-		if readErr != nil {
-			return nil, fmt.Errorf("read registry: %w", readErr)
-		}
+	normalizedID := normalizePageID(pageID)
 
-		var oldReg PageRegistry
-		if unmarshalErr := json.Unmarshal(data, &oldReg); unmarshalErr != nil {
-			return nil, fmt.Errorf("unmarshal registry: %w", unmarshalErr)
-		}
-
-		return &oldReg, nil
+	if reg, err := loadRegistry[PageRegistry](ctx, c, "page", normalizedID); err == nil {
+		return reg, nil
 	}
 
-	return reg, nil
+	// Legacy dashed form, e.g. page-388aa28b-3ffb-80b6-9e5b-c6a0eeaebf64.json.
+	if dashedID := denormalizePageID(normalizedID); dashedID != normalizedID {
+		if reg, err := loadRegistry[PageRegistry](ctx, c, "page", dashedID); err == nil {
+			return reg, nil
+		}
+	}
+
+	// Oldest format ({id}.json, no "page-" prefix) for backward compatibility.
+	oldPath := filepath.Join(stateDir, idsDir, normalizedID+".json")
+	data, readErr := c.store.Read(ctx, oldPath)
+	if readErr != nil {
+		return nil, fmt.Errorf("read registry: %w", readErr)
+	}
+
+	var oldReg PageRegistry
+	if unmarshalErr := json.Unmarshal(data, &oldReg); unmarshalErr != nil {
+		return nil, fmt.Errorf("unmarshal registry: %w", unmarshalErr)
+	}
+
+	return &oldReg, nil
 }
 
 // saveFileRegistry saves a file registry to disk.

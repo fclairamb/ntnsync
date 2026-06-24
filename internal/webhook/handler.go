@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fclairamb/ntnsync/internal/notion"
 	"github.com/fclairamb/ntnsync/internal/queue"
 	"github.com/fclairamb/ntnsync/internal/store"
 	"github.com/fclairamb/ntnsync/internal/version"
@@ -298,7 +299,9 @@ func (h *Handler) processEvent(ctx context.Context, event *Event) {
 
 // handlePageChange handles page.created, page.updated, and eventTypePageContentUpdated events.
 func (h *Handler) handlePageChange(ctx context.Context, event *Event, transaction store.Transaction) {
-	pageID := event.GetEntityID()
+	// Notion delivers IDs in dashed UUID form; normalize so the queue entry and
+	// every downstream registry lookup use the canonical (dash-less) key.
+	pageID := notion.NormalizeID(event.GetEntityID())
 	if pageID == "" {
 		h.logger.WarnContext(ctx, "page change event missing entity ID")
 		return
@@ -351,7 +354,7 @@ func (h *Handler) handlePageChange(ctx context.Context, event *Event, transactio
 
 // handlePageDeletion handles page.deleted and page.undeleted events.
 func (h *Handler) handlePageDeletion(ctx context.Context, event *Event) {
-	pageID := event.GetEntityID()
+	pageID := notion.NormalizeID(event.GetEntityID())
 	if pageID == "" {
 		h.logger.WarnContext(ctx, "page deletion event missing entity ID")
 		return
@@ -374,7 +377,7 @@ func (h *Handler) handlePageDeletion(ctx context.Context, event *Event) {
 
 // handleDatabaseChange handles database.* events.
 func (h *Handler) handleDatabaseChange(ctx context.Context, event *Event, transaction store.Transaction) {
-	databaseID := event.GetEntityID()
+	databaseID := notion.NormalizeID(event.GetEntityID())
 	if databaseID == "" {
 		h.logger.WarnContext(ctx, "database change event missing entity ID")
 		return
@@ -418,7 +421,7 @@ func (h *Handler) handleDatabaseChange(ctx context.Context, event *Event, transa
 
 // handleDatabaseDeletion handles database.deleted and database.undeleted events.
 func (h *Handler) handleDatabaseDeletion(ctx context.Context, event *Event) {
-	databaseID := event.GetEntityID()
+	databaseID := notion.NormalizeID(event.GetEntityID())
 	if databaseID == "" {
 		h.logger.WarnContext(ctx, "database deletion event missing entity ID")
 		return
@@ -435,11 +438,22 @@ func (h *Handler) handleDatabaseDeletion(ctx context.Context, event *Event) {
 
 // lookupPageFolder attempts to find the folder for a page from the registry.
 func (h *Handler) lookupPageFolder(ctx context.Context, pageID string) (string, error) {
-	// Read page registry to get folder
-	// Registry files are at .notion-sync/ids/page-{id}.json
-	registryPath := ".notion-sync/ids/page-" + pageID + ".json"
+	// Registry files are at .notion-sync/ids/page-{id}.json, keyed by the
+	// normalized ID. Fall back to the legacy dashed form so the correct folder is
+	// still found for pages registered before IDs were normalized everywhere.
+	normalized := notion.NormalizeID(pageID)
+	registryPaths := []string{".notion-sync/ids/page-" + normalized + ".json"}
+	if dashed := notion.DenormalizeID(normalized); dashed != normalized {
+		registryPaths = append(registryPaths, ".notion-sync/ids/page-"+dashed+".json")
+	}
 
-	data, err := h.store.Read(ctx, registryPath)
+	var data []byte
+	var err error
+	for _, registryPath := range registryPaths {
+		if data, err = h.store.Read(ctx, registryPath); err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return "", err
 	}

@@ -367,11 +367,6 @@ func (c *Client) GetUser(ctx context.Context, userID string) (*User, error) {
 	return &user, nil
 }
 
-// NormalizeID removes dashes from a Notion ID.
-func NormalizeID(id string) string {
-	return url.PathEscape(id)
-}
-
 // ParsePageIDOrURL extracts a Notion page ID from a URL or returns the ID if already bare.
 // Handles various formats:
 // - https://www.notion.so/Page-Title-abc123def456
