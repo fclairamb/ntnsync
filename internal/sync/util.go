@@ -2,14 +2,21 @@ package sync
 
 import (
 	"regexp"
-	"strings"
 
 	"github.com/fclairamb/ntnsync/internal/apperrors"
+	"github.com/fclairamb/ntnsync/internal/notion"
 )
 
-// normalizePageID removes dashes from a page ID.
+// normalizePageID removes dashes from a page ID so registry keys are canonical.
 func normalizePageID(id string) string {
-	return strings.ReplaceAll(id, "-", "")
+	return notion.NormalizeID(id)
+}
+
+// denormalizePageID re-inserts UUID dashes into a normalized page ID. It is used
+// to locate legacy registry files that were written under the dashed form before
+// IDs were normalized on every code path.
+func denormalizePageID(id string) string {
+	return notion.DenormalizeID(id)
 }
 
 // validateFolderName validates a folder name.

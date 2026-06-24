@@ -651,6 +651,14 @@ func (c *Crawler) writeAndRegister(
 	filesWritten := 0
 	logKey := params.itemType + "_id"
 
+	// Canonicalize the item ID before it is used as a path key or persisted.
+	// Some callers (notably the webhook handler, which receives Notion's dashed
+	// UUID form) pass an un-normalized ID. Persisting it verbatim would write
+	// page-{uuid-with-dashes}.json and, on the next sync, fail to match the
+	// normalized lookup — recomputing the path and appending a spurious
+	// "-{shortID}" suffix, i.e. a duplicate file for the same page.
+	params.itemID = normalizePageID(params.itemID)
+
 	// Determine parent (resolving block parent if needed)
 	blockRes := c.resolveBlockParentWithLogging(ctx, params.itemID, logKey, params.parent.BlockID, params.parent)
 	parentID := blockRes.parentID
@@ -662,7 +670,7 @@ func (c *Crawler) writeAndRegister(
 	if err != nil {
 		return 0, err
 	}
-	parentID = parentResult.parentID
+	parentID = normalizePageID(parentResult.parentID)
 	isRoot = parentResult.isRoot
 	filesWritten += parentResult.filesWritten
 
@@ -725,6 +733,18 @@ func (c *Crawler) writeAndRegister(
 		ContentHash:    contentHash,
 	}); err != nil {
 		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
+	}
+
+	// Self-heal: an earlier run may have stored this page under the legacy dashed
+	// ID form (page-{uuid-with-dashes}.json). Now that the canonical registry is
+	// saved, drop the stale dashed one so the page is not listed — and counted as
+	// a filename conflict — twice. Best-effort: deletePageRegistry ignores a
+	// missing file.
+	if dashedID := denormalizePageID(params.itemID); dashedID != params.itemID {
+		if err := c.deletePageRegistry(ctx, dashedID); err != nil {
+			c.logger.DebugContext(ctx, "could not remove legacy dashed registry",
+				logKey, params.itemID, "error", err)
+		}
 	}
 
 	// Queue children if they don't exist yet

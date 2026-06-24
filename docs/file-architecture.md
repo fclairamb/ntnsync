@@ -59,7 +59,18 @@ Folders are logical organization units for grouping related pages.
 
 **Path**: `.notion-sync/ids/page-{id}.json`
 
-Registry files track metadata for each synced page. The ID in the filename is normalized (no dashes).
+Registry files track metadata for each synced page. The ID in the filename **and** the `id` field are normalized (no dashes).
+
+> **Why normalization matters.** Notion's REST API and webhook events deliver IDs
+> in the dashed UUID form (`388aa28b-3ffb-80b6-9e5b-c6a0eeaebf64`); everything in
+> ntnsync keys on the dash-less form (`388aa28b3ffb80b69e5bc6a0eeaebf64`). IDs are
+> therefore normalized at every entry point (`notion.NormalizeID`), including the
+> webhook handler. If a registry is ever written under the dashed form, the same
+> page fails its file-path stability check and the conflict resolver no longer
+> recognizes it as itself — so it is written to a second, suffixed file (see
+> *Filename Conflicts*). Reads (`loadPageRegistry`) fall back to the dashed form
+> for backward compatibility, and a normal re-sync rewrites the entry under the
+> normalized name and removes the stale dashed file.
 
 ```json
 {
@@ -195,6 +206,19 @@ Filenames follow the pattern `[a-z][a-z0-9-]+`:
 | Non-ASCII removed | `Présentations` → `prsentations` |
 | Separators become hyphens | `DB::Table` → `db-table` |
 | Max 100 characters | Truncated if longer |
+
+## Filename Conflicts
+
+When two **different** pages would sanitize to the same filename in the same
+directory, the second one gets a 4-character suffix derived from its page ID,
+e.g. `comite-strategique.md` and `comite-strategique-388a.md`. The suffix is the
+first characters of the page's own (normalized) ID.
+
+A page must never collide with **itself**: the conflict resolver skips any
+registry whose normalized ID equals the page's own. Two files sharing the same
+`notion_id` are therefore always a bug, not legitimate disambiguation — historically
+caused by un-normalized (dashed) registry IDs. Run `reindex` to detect and merge
+such duplicates (it keeps the most recently edited file).
 
 ## Orphaned Pages
 

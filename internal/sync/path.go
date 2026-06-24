@@ -78,7 +78,11 @@ func (c *Crawler) resolveFilenameConflict(ctx context.Context, _, dir, baseFilen
 	usedNames := make(map[string]string) // lowercase filename -> pageID
 
 	for _, reg := range registries {
-		if reg.ID == pageID {
+		// Compare normalized IDs: a legacy registry for THIS page may store its
+		// ID in the dashed UUID form. Without normalizing, the page would not
+		// recognize its own entry and would append a spurious "-{shortID}"
+		// suffix, creating a duplicate file.
+		if normalizePageID(reg.ID) == pageID {
 			continue // Skip self
 		}
 		regDir := filepath.Dir(reg.FilePath)
