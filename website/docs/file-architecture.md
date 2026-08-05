@@ -63,7 +63,18 @@ Folders are logical organization units for grouping related pages.
 
 **Path**: `.notion-sync/ids/page-{id}.json`
 
-Registry files track metadata for each synced page. The ID in the filename is normalized (no dashes).
+Registry files track metadata for each synced page. The ID in the filename **and** the `id` field are normalized (no dashes).
+
+> **Why normalization matters.** Notion's REST API and webhook events deliver IDs
+> in the dashed UUID form (`388aa28b-3ffb-80b6-9e5b-c6a0eeaebf64`); everything in
+> ntnsync keys on the dash-less form (`388aa28b3ffb80b69e5bc6a0eeaebf64`). IDs are
+> therefore normalized at every entry point (`notion.NormalizeID`), including the
+> webhook handler. If a registry is ever written under the dashed form, the same
+> page fails its file-path stability check and the conflict resolver no longer
+> recognizes it as itself — so it is written to a second, suffixed file (see
+> *Filename Conflicts*). Reads (`loadPageRegistry`) fall back to the dashed form
+> for backward compatibility, and a normal re-sync rewrites the entry under the
+> normalized name and removes the stale dashed file.
 
 ```json
 {
@@ -159,6 +170,26 @@ Queue files hold pages waiting to be synced. Files are processed in order and de
 - Large batches are split across multiple files
 - Sequential numbering ensures FIFO processing
 
+### Optional Separate Queue Branch
+
+When `NTN_QUEUE_BRANCH` is set, only `.notion-sync/queue/` is committed to that
+branch; everything else — page content, `.notion-sync/ids/` and
+`.notion-sync/state.json` — stays on the main branch (`NTN_GIT_BRANCH`).
+
+| Path | Branch |
+|------|--------|
+| Page content (`tech/…`, `root.md`, …) | main |
+| `.notion-sync/ids/` | main |
+| `.notion-sync/state.json` | main |
+| `.notion-sync/queue/` | queue branch |
+
+This isolates the high-frequency "queued page" commits on a dedicated branch so
+the main branch history contains only meaningful content and registry changes.
+Internally the queue branch is checked out into a sibling working directory
+(`<store-path>-queue`) so the main working tree never contains — and therefore
+never commits — the queue checkout. The queue branch is created automatically if
+it does not yet exist on the remote.
+
 ## File Path Stability
 
 File paths **never change** when pages are renamed in Notion:
@@ -179,6 +210,19 @@ Filenames follow the pattern `[a-z][a-z0-9-]+`:
 | Non-ASCII removed | `Présentations` → `prsentations` |
 | Separators become hyphens | `DB::Table` → `db-table` |
 | Max 100 characters | Truncated if longer |
+
+## Filename Conflicts
+
+When two **different** pages would sanitize to the same filename in the same
+directory, the second one gets a 4-character suffix derived from its page ID,
+e.g. `comite-strategique.md` and `comite-strategique-388a.md`. The suffix is the
+first characters of the page's own (normalized) ID.
+
+A page must never collide with **itself**: the conflict resolver skips any
+registry whose normalized ID equals the page's own. Two files sharing the same
+`notion_id` are therefore always a bug, not legitimate disambiguation — historically
+caused by un-normalized (dashed) registry IDs. Run `reindex` to detect and merge
+such duplicates (it keeps the most recently edited file).
 
 ## Orphaned Pages
 
