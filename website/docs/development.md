@@ -4,6 +4,22 @@ sidebar_position: 5
 
 # Development Guidelines
 
+## Prerequisites
+
+- Go 1.25+
+- Docker (for container builds)
+
+## Makefile Targets
+
+| Target | Description |
+|--------|-------------|
+| `make build` | Compile binary with version info |
+| `make test` | Run tests |
+| `make clean` | Remove binary |
+| `make tidy` | Run `go mod tidy` |
+| `make docker-test` | Build and test Docker image |
+| `make intercept` | Set up Telepresence intercept for dev |
+
 ## Logging
 
 ### Log Format Configuration

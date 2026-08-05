@@ -16,7 +16,9 @@ Sync Notion pages to a git repository as markdown files.
 - **Webhook server** — Real-time sync via Notion webhook events
 - **Folder organization** — Group pages into named folders (e.g., `tech`, `product`)
 - **Database support** — Databases are synced as pages with child page listings
+- **Database properties** — Database-entry properties are exported in the `properties` frontmatter
 - **Depth control** — Limit block discovery depth for faster syncs
+- **Clean git history** — Optional separate branch for high-frequency queue commits
 
 ## Installation
 
@@ -78,6 +80,77 @@ NTN_COMMIT=true ntnsync sync
 ntnsync pull
 NTN_COMMIT=true ntnsync sync
 ```
+
+## What the synced repository looks like
+
+The target repository mirrors your Notion hierarchy. Each page becomes `<name>.md`, and its children live in a matching `<name>/` directory:
+
+```
+your-backup-repo/
+├── root.md                          # Root pages manifest
+├── tech/                            # One folder per root.md entry
+│   ├── wiki.md                      # The root page itself
+│   └── wiki/                        # Children mirror the Notion hierarchy
+│       ├── architecture.md
+│       ├── architecture/
+│       │   ├── database-schema.md
+│       │   └── files/               # Downloaded images and attachments
+│       │       └── diagram.png
+│       ├── releases.md              # A database page, listing its entries
+│       └── releases/
+│           ├── client-app-v1-2-0.md # Database entries are plain pages
+│           └── client-app-v1-3-0.md
+├── product/
+│   └── specs.md
+└── .notion-sync/                    # Sync metadata (committed too)
+    ├── state.json                   # Global sync state
+    ├── ids/                         # Page and file registries
+    └── queue/                       # Pending sync work (see NTN_QUEUE_BRANCH)
+```
+
+File paths are derived from the page title at first sync and **never change afterwards**, even when pages are renamed in Notion — so links and git history stay stable.
+
+### Frontmatter
+
+Every markdown file starts with YAML frontmatter describing the page:
+
+```yaml
+---
+ntnsync_version: 0.8.1
+notion_id: 159aa28b-3ffb-808a-a6db-fdb9fa28c1d9
+title: "Architecture"
+notion_type: page
+notion_folder: tech
+file_path: tech/wiki/architecture.md
+created_by: "Jane Doe <jane@example.com> [751deade]"
+last_edited_by: "John Smith <john@example.com> [306d872b]"
+last_edited: 2026-03-23T12:30:00Z
+last_synced: 2026-06-09T18:16:13Z
+icon: "emoji:📝"
+notion_parent_id: 119aa28b3ffb8073b4f4e2f9ef243691
+is_root: false
+notion_url: https://www.notion.so/Architecture-159aa28b3ffb808aa6dbfdb9fa28c1d9
+---
+```
+
+Pages that are **database entries** additionally carry their database properties, passed through under the `properties` key:
+
+```yaml
+properties:
+  Status: "In Progress"
+  Priority: "High"
+  Version: "1.2.0"
+  Tags:
+    - "feature"
+    - "urgent"
+---
+```
+
+Select, multi-select, status, date, number, checkbox, people, and relation properties are flattened to their display values, so the exported markdown is self-contained and greppable.
+
+### Separate queue branch
+
+The `.notion-sync/queue/` directory changes on every pull and webhook event, which would flood the main branch history with "queued pages" commits. Setting `NTN_QUEUE_BRANCH=queue` routes queue commits to a dedicated branch (auto-created if missing), while page content, registries, and state stay on the main branch. The goal: the main branch history only contains meaningful content changes, making diffs and reviews of your Notion backup actually readable.
 
 ## Webhook server
 
@@ -189,6 +262,7 @@ See [deployment docs](website/docs/deployment.md) for the full setup including S
 | `NTN_GIT_URL` | | Remote git repository URL |
 | `NTN_GIT_PASS` | | Git password/token for authentication |
 | `NTN_GIT_BRANCH` | `main` | Git branch name |
+| `NTN_QUEUE_BRANCH` | | Commit `.notion-sync/queue/` to a separate branch (e.g. `queue`), keeping high-frequency queue commits out of the main history |
 | `NTN_GIT_USER` | `ntnsync` | Git commit author name |
 | `NTN_GIT_EMAIL` | `ntnsync@localhost` | Git commit author email |
 
