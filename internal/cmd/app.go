@@ -720,6 +720,12 @@ func serveCommand() *cli.Command {
 				Value:   0,
 				Sources: cli.EnvVars("NTN_WEBHOOK_SYNC_DELAY"),
 			},
+			&cli.BoolFlag{
+				Name:    "pprof",
+				Usage:   "Expose net/http/pprof profiling endpoints under /debug/pprof",
+				Value:   false,
+				Sources: cli.EnvVars("NTN_PPROF"),
+			},
 			verboseFlag,
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
@@ -749,6 +755,7 @@ func serveCommand() *cli.Command {
 				Secret:    secret,
 				AutoSync:  cmd.Bool("auto-sync"),
 				SyncDelay: cmd.Duration("sync-delay"),
+				Pprof:     cmd.Bool("pprof"),
 			}
 
 			// Create sync worker if NOTION_TOKEN is available

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"time"
 
 	"github.com/fclairamb/ntnsync/internal/queue"
@@ -46,6 +47,17 @@ func NewServer(
 	mux.HandleFunc("/health", handler.HandleHealth)
 	mux.HandleFunc("/api/version", handler.HandleVersion)
 	mux.HandleFunc(cfg.Path, handler.HandleWebhook)
+
+	// Profiling endpoints, opt-in through NTN_PPROF. Used to diagnose the
+	// memory growth of the long-running serve command against big repos.
+	if cfg.Pprof {
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		logger.Info("pprof endpoints enabled", "path", "/debug/pprof/")
+	}
 
 	// Wrap with logging middleware
 	loggedHandler := loggingMiddleware(mux, logger)
