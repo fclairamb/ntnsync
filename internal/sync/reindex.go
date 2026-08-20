@@ -350,16 +350,16 @@ func (c *Crawler) CommitChanges(ctx context.Context, message string) error {
 		return fmt.Errorf("flush registries: %w", err)
 	}
 
-	transaction := c.tx
-	if transaction == nil {
-		newTx, err := c.store.BeginTx(ctx)
-		if err != nil {
-			return fmt.Errorf("begin transaction: %w", err)
-		}
-		transaction = newTx
+	// Without a transaction there is, by construction, nothing to commit: the
+	// store stages exactly the paths a transaction recorded, so a freshly opened
+	// one would stage nothing and produce no commit. Say so instead of going
+	// through the motions.
+	if c.tx == nil {
+		c.logger.DebugContext(ctx, "no transaction, nothing to commit")
+		return nil
 	}
 
-	if err := transaction.Commit(ctx, message); err != nil {
+	if err := c.tx.Commit(ctx, message); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
 

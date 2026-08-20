@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/ntnsync/internal/apperrors"
 	"github.com/fclairamb/ntnsync/internal/notion"
+	"github.com/fclairamb/ntnsync/internal/store"
 	"github.com/fclairamb/ntnsync/internal/version"
 )
 
@@ -199,6 +200,28 @@ func (c *Crawler) loadUserRegistry(ctx context.Context, userID string) (*UserReg
 	}
 
 	return legacy, nil
+}
+
+// LookupPageFolder returns the folder a page (or database) is stored in,
+// according to the registry index.
+//
+// It is a read-only helper for callers that hold a store but no crawler — the
+// webhook handler in particular. Going through the crawler means the lookup
+// resolves via the sharded index *and* every legacy fallback, so it keeps
+// working both before and after `ntnsync reindex --compact`. Reading the legacy
+// path directly would start failing the moment the migration deletes it, and a
+// failed lookup silently downgrades the page to the default folder.
+func LookupPageFolder(ctx context.Context, storeInst store.Store, pageID string) (string, error) {
+	reg, err := NewCrawler(nil, storeInst).loadPageRegistry(ctx, pageID)
+	if err != nil {
+		return "", err
+	}
+
+	if reg.Folder == "" {
+		return defaultFolderName, nil
+	}
+
+	return reg.Folder, nil
 }
 
 // enrichUser resolves a user's name by checking the local registry first,

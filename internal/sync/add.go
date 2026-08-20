@@ -388,7 +388,7 @@ func (c *Crawler) traceParentChain(
 	// Use requested folder or default
 	targetFolder := requestedFolder
 	if targetFolder == "" {
-		targetFolder = "default"
+		targetFolder = defaultFolderName
 	}
 
 	c.logger.DebugContext(ctx, "reached workspace level",

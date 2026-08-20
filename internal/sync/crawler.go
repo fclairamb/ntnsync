@@ -22,6 +22,9 @@ const (
 
 	defaultUntitledStr = "untitled"
 
+	// defaultFolderName is the folder used when none is recorded.
+	defaultFolderName = "default"
+
 	// Notion object types used across the sync package.
 	notionTypePage     = "page"
 	notionTypeDatabase = "database"

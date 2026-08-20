@@ -21,9 +21,10 @@ const (
 
 // compactStats counts what a compaction migrated.
 type compactStats struct {
-	pages int
-	files int
-	users int
+	pages    int
+	files    int
+	users    int
+	migrated int // legacy files recognized and absorbed
 }
 
 // isBareIDRegistryName reports whether name is the oldest registry filename
@@ -81,41 +82,31 @@ func (c *Crawler) Compact(ctx context.Context, dryRun bool) error {
 		return err
 	}
 
-	stats := &compactStats{}
-	migrated := make([]string, 0, len(paths))
-
-	for _, path := range paths {
-		if c.absorbLegacyRegistry(ctx, path, stats) {
-			migrated = append(migrated, path)
+	if !dryRun && len(paths) > 0 {
+		if txErr := c.EnsureTransaction(ctx); txErr != nil {
+			return fmt.Errorf("ensure transaction: %w", txErr)
 		}
+	}
+
+	stats := &compactStats{}
+	if err := c.absorbLegacyRegistries(ctx, paths, stats, dryRun); err != nil {
+		return err
 	}
 
 	c.logger.InfoContext(ctx, "compact summary",
 		"pages", stats.pages,
 		"files", stats.files,
 		"users", stats.users,
-		"legacy_files", len(migrated))
+		"legacy_files", stats.migrated)
 
 	if dryRun {
 		c.logger.InfoContext(ctx, "dry run - no changes made")
 		return nil
 	}
 
-	if len(migrated) == 0 {
+	if stats.migrated == 0 {
 		c.logger.InfoContext(ctx, "registry index already compact")
 		return nil
-	}
-
-	if err := c.EnsureTransaction(ctx); err != nil {
-		return fmt.Errorf("ensure transaction: %w", err)
-	}
-
-	// Queued after the shards are written by FlushRegistries, so a crash in
-	// between duplicates records rather than losing them.
-	c.dropLegacyRegistries(migrated...)
-
-	if err := c.FlushRegistries(ctx); err != nil {
-		return fmt.Errorf("flush registries: %w", err)
 	}
 
 	if err := c.CommitChanges(ctx, "[ntnsync] reindex --compact: sharded registry index"); err != nil {
@@ -123,6 +114,61 @@ func (c *Crawler) Compact(ctx context.Context, dryRun bool) error {
 	}
 
 	c.logger.InfoContext(ctx, "compact complete")
+
+	return nil
+}
+
+// absorbLegacyRegistries reads the legacy files into the sharded index,
+// flushing every maxPendingRegistryWrites records so a workspace with tens of
+// thousands of them does not have to be held in memory all at once.
+func (c *Crawler) absorbLegacyRegistries(
+	ctx context.Context, paths []string, stats *compactStats, dryRun bool,
+) error {
+	batch := make([]string, 0, maxPendingRegistryWrites)
+
+	for _, path := range paths {
+		if !c.absorbLegacyRegistry(ctx, path, stats, !dryRun) {
+			continue
+		}
+		stats.migrated++
+
+		if dryRun {
+			continue
+		}
+
+		batch = append(batch, path)
+		if len(batch) < maxPendingRegistryWrites {
+			continue
+		}
+
+		if err := c.flushCompactBatch(ctx, batch); err != nil {
+			return err
+		}
+		batch = batch[:0]
+	}
+
+	if dryRun {
+		return nil
+	}
+
+	return c.flushCompactBatch(ctx, batch)
+}
+
+// flushCompactBatch writes the shards holding a batch of migrated records and
+// then removes the legacy files they replaced.
+//
+// FlushRegistries writes the shards before deleting the queued legacy files, so
+// a crash in between duplicates records rather than losing them.
+func (c *Crawler) flushCompactBatch(ctx context.Context, batch []string) error {
+	if len(batch) == 0 {
+		return nil
+	}
+
+	c.dropLegacyRegistries(batch...)
+
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
+	}
 
 	return nil
 }
@@ -161,7 +207,10 @@ func (c *Crawler) legacyRegistryPaths(ctx context.Context) ([]string, error) {
 
 // absorbLegacyRegistry reads one legacy registry file into the sharded index.
 // It reports whether the file was recognized and can therefore be deleted.
-func (c *Crawler) absorbLegacyRegistry(ctx context.Context, path string, stats *compactStats) bool {
+//
+// With apply false (dry run) the record is still read and validated, but not
+// buffered for writing.
+func (c *Crawler) absorbLegacyRegistry(ctx context.Context, path string, stats *compactStats, apply bool) bool {
 	name := filepath.Base(path)
 
 	switch {
@@ -171,9 +220,11 @@ func (c *Crawler) absorbLegacyRegistry(ctx context.Context, path string, stats *
 			c.logger.WarnContext(ctx, "skipping unreadable page registry", "path", path, "error", err)
 			return false
 		}
-		reg.ID = normalizePageID(reg.ID)
-		reg.ParentID = normalizePageID(reg.ParentID)
-		c.pageIndex.put(reg)
+		if apply {
+			reg.ID = normalizePageID(reg.ID)
+			reg.ParentID = normalizePageID(reg.ParentID)
+			c.pageIndex.put(reg)
+		}
 		stats.pages++
 
 	case strings.HasPrefix(name, legacyFilePrefix):
@@ -182,8 +233,10 @@ func (c *Crawler) absorbLegacyRegistry(ctx context.Context, path string, stats *
 			c.logger.WarnContext(ctx, "skipping unreadable file registry", "path", path, "error", err)
 			return false
 		}
-		reg.SourceURL = stripURLQuery(reg.SourceURL)
-		c.fileIndex.put(reg)
+		if apply {
+			reg.SourceURL = stripURLQuery(reg.SourceURL)
+			c.fileIndex.put(reg)
+		}
 		stats.files++
 
 	case strings.HasPrefix(name, legacyUserPrefix):
@@ -192,7 +245,9 @@ func (c *Crawler) absorbLegacyRegistry(ctx context.Context, path string, stats *
 			c.logger.WarnContext(ctx, "skipping unreadable user registry", "path", path, "error", err)
 			return false
 		}
-		c.userIndex.put(reg)
+		if apply {
+			c.userIndex.put(reg)
+		}
 		stats.users++
 
 	default:

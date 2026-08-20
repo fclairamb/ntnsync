@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/fclairamb/ntnsync/internal/notion"
 	"github.com/fclairamb/ntnsync/internal/queue"
 	"github.com/fclairamb/ntnsync/internal/store"
+	"github.com/fclairamb/ntnsync/internal/sync"
 	"github.com/fclairamb/ntnsync/internal/version"
 )
 
@@ -437,38 +439,19 @@ func (h *Handler) handleDatabaseDeletion(ctx context.Context, event *Event) {
 }
 
 // lookupPageFolder attempts to find the folder for a page from the registry.
+//
+// The lookup goes through the sync package rather than reading a registry file
+// by hand: the index is sharded (.notion-sync/ids/page/{shard}.jsonl) and the
+// per-page files only survive until `reindex --compact` runs. Reading the legacy
+// path directly would silently start returning the default folder on every
+// webhook event of a migrated repository.
 func (h *Handler) lookupPageFolder(ctx context.Context, pageID string) (string, error) {
-	// Registry files are at .notion-sync/ids/page-{id}.json, keyed by the
-	// normalized ID. Fall back to the legacy dashed form so the correct folder is
-	// still found for pages registered before IDs were normalized everywhere.
-	normalized := notion.NormalizeID(pageID)
-	registryPaths := []string{".notion-sync/ids/page-" + normalized + ".json"}
-	if dashed := notion.DenormalizeID(normalized); dashed != normalized {
-		registryPaths = append(registryPaths, ".notion-sync/ids/page-"+dashed+".json")
-	}
-
-	var data []byte
-	var err error
-	for _, registryPath := range registryPaths {
-		if data, err = h.store.Read(ctx, registryPath); err == nil {
-			break
-		}
-	}
+	folder, err := sync.LookupPageFolder(ctx, h.store, notion.NormalizeID(pageID))
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("lookup page folder: %w", err)
 	}
 
-	var registry struct {
-		Folder string `json:"folder"`
-	}
-	if err := json.Unmarshal(data, &registry); err != nil {
-		return "", err
-	}
-
-	if registry.Folder == "" {
-		return "default", nil
-	}
-	return registry.Folder, nil
+	return folder, nil
 }
 
 // commitQueueFiles commits webhook queue files to git immediately and pushes to remote.
