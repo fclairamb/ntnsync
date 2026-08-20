@@ -125,7 +125,8 @@ func TestSavePageRegistry_NormalizesDashedID(t *testing.T) {
 	}
 
 	idsDirPath := filepath.Join(tmpDir, ".notion-sync/ids")
-	shard, readErr := os.ReadFile(filepath.Join(idsDirPath, "page", normalizedID[:2]+".jsonl"))
+	shardPath := filepath.Join(idsDirPath, "page", normalizedID[:2]+".jsonl")
+	shard, readErr := os.ReadFile(shardPath) //nolint:gosec // test-controlled path
 	if readErr != nil {
 		t.Fatalf("expected the page shard to exist: %v", readErr)
 	}

@@ -120,6 +120,10 @@ func (c *Crawler) finalizeAdd(ctx context.Context, params *finalizeAddParams) er
 			"parent_id", params.itemID)
 	}
 
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
+	}
+
 	return nil
 }
 
@@ -305,6 +309,10 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 	// Now save the requested page
 	if err := c.savePageFromNotion(ctx, page, targetFolder, false); err != nil {
 		return fmt.Errorf("save page: %w", err)
+	}
+
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
 	}
 
 	// Save state

@@ -93,6 +93,10 @@ func (c *Crawler) Cleanup(ctx context.Context, dryRun bool) (*CleanupResult, err
 		}
 	}
 
+	if err := c.FlushRegistries(ctx); err != nil {
+		return nil, fmt.Errorf("flush registries: %w", err)
+	}
+
 	c.logger.InfoContext(ctx, "cleanup complete",
 		"orphaned_pages", result.OrphanedPages,
 		"deleted_registries", result.DeletedRegistries,

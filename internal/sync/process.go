@@ -194,6 +194,12 @@ func (c *Crawler) ProcessQueueWithCallback(
 		}
 	}
 
+	// Flush the buffered registry writes before the final state save, so a
+	// caller that commits right after picks them up.
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
+	}
+
 	// Final state save
 	if err := c.saveState(ctx); err != nil {
 		return fmt.Errorf("save state: %w", err)
