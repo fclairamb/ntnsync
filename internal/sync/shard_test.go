@@ -2,7 +2,9 @@ package sync
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -12,7 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-git/go-git/v5"
+
 	"github.com/fclairamb/ntnsync/internal/store"
+	"github.com/fclairamb/ntnsync/internal/version"
 )
 
 // newShardTestCrawler builds a crawler backed by a fresh git-backed store in a
@@ -574,9 +579,8 @@ func TestCompactMigratesLegacyRegistries(t *testing.T) {
 		}
 	}
 
-	if _, err := os.Stat(filepath.Join(tmpDir, ".notion-sync/ids", idsManifestFile)); err != nil {
-		t.Errorf("manifest must be written: %v", err)
-	}
+	assertManifest(t, tmpDir)
+	assertCompactCommit(t, tmpDir)
 
 	if content := readShardFile(t, tmpDir, fileShardDir, "ab"); strings.Contains(content, "X-Amz-Signature") {
 		t.Errorf("migration must normalize source_url: %s", content)
@@ -621,5 +625,167 @@ func TestCompactDryRunChangesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(tmpDir, ".notion-sync/ids", pageShardDir)); !os.IsNotExist(err) {
 		t.Errorf("dry run must not write shards, stat err = %v", err)
+	}
+}
+
+// assertManifest checks that the index manifest carries the versions that used
+// to be repeated inside every record.
+func assertManifest(t *testing.T, tmpDir string) {
+	t.Helper()
+
+	path := filepath.Join(tmpDir, ".notion-sync", "ids", idsManifestFile)
+	data, err := os.ReadFile(path) //nolint:gosec // test-controlled path
+	if err != nil {
+		t.Fatalf("manifest must be written: %v", err)
+	}
+
+	var manifest idsManifest
+	if unmarshalErr := json.Unmarshal(data, &manifest); unmarshalErr != nil {
+		t.Fatalf("manifest is not valid JSON: %v", unmarshalErr)
+	}
+
+	if manifest.SchemaVersion != idsSchemaVersion {
+		t.Errorf("manifest schema_version = %d, want %d", manifest.SchemaVersion, idsSchemaVersion)
+	}
+	if manifest.NtnsyncVersion != version.Version {
+		t.Errorf("manifest ntnsync_version = %q, want %q", manifest.NtnsyncVersion, version.Version)
+	}
+}
+
+// assertCompactCommit checks that the migration actually produced a git commit
+// holding the shards.
+//
+// This is the regression guard for CommitChanges: writes land on the filesystem
+// immediately, so every os.Stat assertion in the compaction test still passes if
+// the commit silently does nothing. Only git state catches that.
+func assertCompactCommit(t *testing.T, tmpDir string) {
+	t.Helper()
+
+	repo, err := git.PlainOpen(tmpDir)
+	if err != nil {
+		t.Fatalf("open repository: %v", err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatalf("compaction must create a commit, HEAD is unresolvable: %v", err)
+	}
+
+	commit, err := repo.CommitObject(head.Hash())
+	if err != nil {
+		t.Fatalf("read HEAD commit: %v", err)
+	}
+
+	const wantMessage = "[ntnsync] reindex --compact: sharded registry index"
+	if commit.Message != wantMessage {
+		t.Errorf("HEAD message = %q, want %q", commit.Message, wantMessage)
+	}
+
+	tree, err := commit.Tree()
+	if err != nil {
+		t.Fatalf("read HEAD tree: %v", err)
+	}
+
+	if _, err := tree.FindEntry(".notion-sync/ids/page/aa.jsonl"); err != nil {
+		t.Errorf("the shard must be committed, not merely written to disk: %v", err)
+	}
+	if _, err := tree.FindEntry(".notion-sync/ids/" + idsManifestFile); err != nil {
+		t.Errorf("the manifest must be committed: %v", err)
+	}
+}
+
+// shardTestIDs returns count IDs landing in distinct shards, `perShard` records
+// each.
+func shardTestIDs(t *testing.T, shards, perShard int) []string {
+	t.Helper()
+
+	ids := make([]string, 0, shards*perShard)
+
+	for shard := range shards {
+		prefix := hex.EncodeToString([]byte{byte(shard)})
+		for rec := range perShard {
+			ids = append(ids, prefix+fmt.Sprintf("%030d", shard*perShard+rec))
+		}
+	}
+
+	return ids
+}
+
+// TestShardCacheEvictionKeepsRecords exercises the LRU: touching far more shards
+// than the cache holds must not lose a pending write, and a read-modify-write of
+// an evicted shard must preserve its other records.
+func TestShardCacheEvictionKeepsRecords(t *testing.T) {
+	t.Parallel()
+
+	const (
+		shards   = shardCacheSize + 8 // more shards than the cache can hold
+		perShard = 2
+	)
+
+	crawler, _, tmpDir := newShardTestCrawler(t)
+	ctx := context.Background()
+	ids := shardTestIDs(t, shards, perShard)
+
+	for _, pageID := range ids {
+		if err := crawler.savePageRegistry(ctx, &PageRegistry{
+			ID: pageID, Type: notionTypePage, Folder: "tech", FilePath: "tech/" + pageID + ".md",
+			Title: "before",
+		}); err != nil {
+			t.Fatalf("savePageRegistry: %v", err)
+		}
+	}
+	if err := crawler.FlushRegistries(ctx); err != nil {
+		t.Fatalf("FlushRegistries: %v", err)
+	}
+
+	if cached := len(crawler.pageIndex.cache); cached > shardCacheSize {
+		t.Errorf("cache holds %d shards, want at most %d", cached, shardCacheSize)
+	}
+
+	registries, err := crawler.listPageRegistries(ctx)
+	if err != nil {
+		t.Fatalf("listPageRegistries: %v", err)
+	}
+	if len(registries) != len(ids) {
+		t.Fatalf("got %d registries, want %d — eviction lost pending writes", len(registries), len(ids))
+	}
+
+	// Shard "00" was written first and evicted long ago. Updating one of its two
+	// records must re-read it from disk and keep the sibling.
+	updated := ids[0]
+	sibling := ids[1]
+
+	if saveErr := crawler.savePageRegistry(ctx, &PageRegistry{
+		ID: updated, Type: notionTypePage, Folder: "tech", FilePath: "tech/" + updated + ".md",
+		Title: "after",
+	}); saveErr != nil {
+		t.Fatalf("savePageRegistry: %v", saveErr)
+	}
+	if flushErr := crawler.FlushRegistries(ctx); flushErr != nil {
+		t.Fatalf("FlushRegistries: %v", flushErr)
+	}
+
+	content := readShardFile(t, tmpDir, pageShardDir, shardKeyFor(updated))
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	if len(lines) != perShard {
+		t.Fatalf("shard has %d lines, want %d after read-modify-write: %s", len(lines), perShard, content)
+	}
+
+	reader := NewCrawler(nil, crawler.store.(*store.LocalStore), WithCrawlerLogger(slog.Default()))
+
+	updatedReg, err := reader.loadPageRegistry(ctx, updated)
+	if err != nil {
+		t.Fatalf("loadPageRegistry(updated): %v", err)
+	}
+	if updatedReg.Title != "after" {
+		t.Errorf("updated record title = %q, want %q", updatedReg.Title, "after")
+	}
+
+	siblingReg, err := reader.loadPageRegistry(ctx, sibling)
+	if err != nil {
+		t.Fatalf("sibling record lost by the read-modify-write: %v", err)
+	}
+	if siblingReg.Title != "before" {
+		t.Errorf("sibling title = %q, want %q", siblingReg.Title, "before")
 	}
 }

@@ -204,3 +204,28 @@ around line 284) so both new records and records rewritten by the migration are 
 6. **Docs + tests.** `docs/file-architecture.md` describes the new layout; tests cover
    shard-key derivation, round-trip, deterministic ordering, legacy fallback, mixed
    `listPageRegistries`, one-write-per-shard batching and the `--compact` migration.
+
+### Crash recovery during `reindex --compact`
+
+The migration writes the shards and unlinks the legacy files through the
+transaction, then makes a single commit. If the process is killed *between* the
+unlink and the commit, the working tree is already correct — shards present,
+legacy files gone — but nothing is committed, and a re-run reports "registry
+index already compact" without committing, because it only looks for legacy
+files.
+
+No data is lost (the shards are on disk and readable), but the state does not
+self-heal: the store stages exactly the paths a transaction recorded, so a later
+sync commit will not pick up the orphaned changes either.
+
+Recovery is a plain git commit in the store directory:
+
+```bash
+git -C <store-path> add .notion-sync/ids
+git -C <store-path> commit -m "[ntnsync] reindex --compact: sharded registry index"
+```
+
+A self-healing guard was considered and rejected: detecting "shards present but
+not in HEAD" requires git knowledge inside `internal/sync`, which only sees the
+`store.Store` abstraction. Splitting the migration into two commits (add shards,
+then remove legacy) would self-heal, but the spec calls for a single commit.
