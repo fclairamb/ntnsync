@@ -227,6 +227,7 @@ func (s *LocalStore) pullLocked(ctx context.Context) error {
 		RemoteName:    gitRemoteOrigin,
 		ReferenceName: plumbing.NewBranchReferenceName(s.remoteConfig.Branch),
 		Auth:          auth,
+		Depth:         s.remoteConfig.Depth,
 	})
 	if err != nil {
 		if errors.Is(err, git.NoErrAlreadyUpToDate) {
@@ -258,6 +259,7 @@ func (s *LocalStore) fetchAndMergeLocked(ctx context.Context, auth transport.Aut
 	err := s.repo.FetchContext(ctx, &git.FetchOptions{
 		RemoteName: gitRemoteOrigin,
 		Auth:       auth,
+		Depth:      s.remoteConfig.Depth,
 	})
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		return fmt.Errorf("fetch: %w", err)
@@ -638,6 +640,7 @@ func (s *LocalStore) cloneFromRemote(path string) (*git.Repository, error) {
 		Auth:          auth,
 		ReferenceName: plumbing.NewBranchReferenceName(s.remoteConfig.Branch),
 		SingleBranch:  true,
+		Depth:         s.remoteConfig.Depth,
 	})
 
 	if err == nil {
