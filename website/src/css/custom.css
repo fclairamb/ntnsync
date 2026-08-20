@@ -64,9 +64,3 @@
      instead of shrinking the type. */
   min-width: 620px;
 }
-
-.ntnDiagramCaption {
-  margin-top: -0.75rem;
-  color: var(--ifm-color-emphasis-700);
-  font-size: 0.875rem;
-}
