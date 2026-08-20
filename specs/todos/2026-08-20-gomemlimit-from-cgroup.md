@@ -44,7 +44,7 @@ nothing" rule already covers.
 ## Acceptance criteria
 
 - `GOMEMLIMIT` unset + a readable cgroup v2 `memory.max` of `3221225472` → memory limit set
-  to 85% of that (2737418240 bytes), logged.
+  to 85% of that (2738041651 bytes), logged.
 - `GOMEMLIMIT` set in env → helper makes no call to `SetMemoryLimit`.
 - `memory.max` containing `max` → no call.
 - Missing files → no call, no error, no warning spam.
