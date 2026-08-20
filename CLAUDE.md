@@ -5,6 +5,7 @@
 See `docs/` for detailed documentation:
 - [CLI Commands](docs/cli-commands.md) - All commands with flags and examples
 - [File Architecture](docs/file-architecture.md) - Directory structure, registries, queue system
+- [GitHub API storage](docs/github-storage.md) - The opt-in `NTN_STORAGE=github` backend
 - [Markdown Conversion](docs/markdown-conversion.md) - How Notion blocks become markdown
 - [Development](docs/development.md) - Logging, code organization, building
 
@@ -26,6 +27,10 @@ NTN_COMMIT=true ./ntnsync sync                  # Process queue, commit
 ./ntnsync list --tree                           # Show page hierarchy
 ./ntnsync cleanup --dry-run                     # Preview orphaned pages
 ```
+
+**Storage backend**:
+- `NTN_STORAGE=local|remote|github` - `github` is the opt-in clone-free GitHub API
+  backend; `reindex`, `cleanup` and `list --tree` are unsupported there and fail fast
 
 **Commit/Push environment variables**:
 - `NTN_COMMIT=true` - Enable automatic git commit after changes
