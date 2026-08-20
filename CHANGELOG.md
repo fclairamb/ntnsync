@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.9.0](https://github.com/fclairamb/ntnsync/compare/v0.8.3...v0.9.0) (2026-08-20)
+
+
+### Features
+
+* reduce memory usage on large repositories ([#155](https://github.com/fclairamb/ntnsync/issues/155)) ([0617b0a](https://github.com/fclairamb/ntnsync/commit/0617b0a46873fea9c166eb277eaf900797778f02))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/urfave/cli/v3 to v3.11.0 ([#150](https://github.com/fclairamb/ntnsync/issues/150)) ([f22fe01](https://github.com/fclairamb/ntnsync/commit/f22fe01bc43c1d810aeb8e2feee53bf27fc39a4b))
+* **deps:** update module golang.org/x/text to v0.41.0 ([#148](https://github.com/fclairamb/ntnsync/issues/148)) ([42791b4](https://github.com/fclairamb/ntnsync/commit/42791b400080e992ea3ba2cab68af85952474bb5))
+
 ## [0.8.3](https://github.com/fclairamb/ntnsync/compare/v0.8.2...v0.8.3) (2026-08-05)
 
 
