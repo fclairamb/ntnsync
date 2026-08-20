@@ -1,8 +1,13 @@
+---
+model: opus
+effort: high
+---
+
 # Sharded registry index
 
 **Date**: 2026-08-19
-**Status**: Approved 2026-08-20 — pending implementation
-**Companion to**: `2026-08-19-oom-large-repo.md` (fix S1a)
+**Status**: Approved 2026-08-20 — open questions resolved, ready to implement
+**Parent**: `specs/2026-08-19-oom-large-repo.md` (S1a)
 
 ## Problem
 
@@ -55,7 +60,9 @@ Unchanged from today's `PageRegistry` / `FileRegistry` / `UserRegistry`, minus t
   (~2 KB of AWS credentials, signature and expiry) that **is written but never read**
   — `grep` finds only the write at `internal/sync/file.go:284` and the field declaration.
   It also rotates on every Notion fetch, so it churns the record even when the file is
-  unchanged. Keep the bare object path, or drop the field.
+  unchanged. **Decision: keep the field, storing only the bare object path** — strip the
+  query string (everything from `?` onwards) before writing. This preserves provenance at
+  ~100 bytes instead of ~2 KB and removes the per-fetch churn entirely.
 
   That alone removes ~19 MB and most of the `file-*` churn.
 
@@ -130,3 +137,30 @@ recreating the many-small-files problem; 16 makes each write rewrite a 690 KB bl
   the committed source of truth.
 - **Nested directories by ID prefix** (`ids/ab/cd/page-….json`). Fixes the single-huge-tree
   problem but keeps 41,086 files, so checkout and index cost barely move.
+
+## Resolved open questions
+
+> "Drop the query string from `FileRegistry.SourceURL` [...] Keep the bare object path, or
+> drop the field."
+
+**Decision:** keep the field, store only the bare object path. Strip everything from `?`
+onwards before writing. Do not remove `SourceURL` from the struct — provenance is worth the
+~100 bytes, and keeping the field avoids a second schema change later.
+
+Apply the strip on write in `internal/sync/file.go` (the `SourceURL: fileURL` assignment
+around line 284) so both new records and records rewritten by the migration are normalized.
+
+## Implementation notes
+
+- Records currently carry `ntnsync_version` per entry (all 41,086 identical, so a version
+  bump rewrites every record). Move it to a single `.notion-sync/ids/manifest.json` holding
+  `ntnsync_version` and a `schema_version`, as described above.
+- `listPageRegistries()` (`internal/sync/registry.go:172`) is called from `list.go` (x2),
+  `cleanup.go`, `pull.go` and `path.go` — the full scan must stay cheap.
+- Batch writes per commit cycle: collect dirty records in memory, group by shard, flush once
+  before the commit, so a sync touching 50 pages does not rewrite the same shard 50 times.
+- Keep the existing legacy read fallbacks in `loadPageRegistry` (`registry.go:70-98`) and add
+  the shard lookup as the new primary, so an in-flight repository keeps working until the
+  migration commit lands.
+- The one-shot migration (`ntnsync reindex --compact`) converts every legacy file, writes the
+  shards, and deletes the old files in a single commit.

@@ -1,7 +1,12 @@
 # OOM crashes on large repositories
 
 **Date**: 2026-08-19
-**Status**: Diagnosed — plan approved 2026-08-20, pending implementation
+**Status**: Diagnosed — plan approved 2026-08-20, split into implementable specs
+
+> **This is the umbrella roadmap, not a unit of work.** It is deliberately *not* in
+> `specs/todos/`: the implementable parts have been split into their own specs (see
+> "Disposition" below), and the remaining parts are either out-of-repo or must not be
+> automated.
 
 ## Symptom
 
@@ -190,3 +195,62 @@ rather than 41,086 individual files.
 `NTN_PPROF=true` / `--pprof` exposes `net/http/pprof` on the webhook port
 (`internal/webhook/server.go`, `internal/webhook/config.go`, `internal/cmd/app.go`).
 Off by default.
+
+## Resolved open questions
+
+Answered 2026-08-20. Each answer is a directive, not a suggestion.
+
+> **Q1.** S1c: "Reclaim it with a history rewrite (`git filter-repo`, or a fresh orphan
+> branch seeded from the current tree if history is not worth preserving), then force-push
+> and have every replica re-clone."
+
+**Decision: do not automate this, and do not implement it now.** A history rewrite
+force-pushes over a live backup repository and decides whether 36,412 commits survive — it
+is irreversible. It stays a manual, supervised operation, run once, only after S1a and S1b
+are deployed and stable. The method (`filter-repo` vs fresh orphan branch) is chosen at that
+time, when it is known whether the history still has value.
+
+> **Q2.** Tier 1 names a memory limit, `GOMEMLIMIT`/`GOGC`, and a 20 GB PVC — but which
+> repository owns them?
+
+**Decision: split it.** The memory limit, the env vars and the PVC live in the deployment
+manifest, which is in the ops repository; this repository contains no manifests. They ship
+as a change there, by hand.
+
+The one part that belongs in this repository is having the binary discover the cgroup limit
+and set `GOMEMLIMIT` itself — that fixes it for every deployment rather than one. Split out
+as `specs/todos/2026-08-20-gomemlimit-from-cgroup.md`.
+
+> **Q3.** "Raise the memory limit | 2.5–3Gi" and "`GOMEMLIMIT` ~85% of the container limit"
+> are a range and an approximation.
+
+**Decision: 3Gi container limit, `GOMEMLIMIT` = 2560 MiB (85%), `GOGC=50`.** Applied in the
+ops repository per Q2. The in-repo helper uses the same 85% factor.
+
+> **Q4.** S2 and S3 describe outcomes but no implementation.
+
+**Decision: neither is in scope yet.** S2 (drop the distroless base, replace the go-git
+store with an exec'd `git` using `--filter=blob:none`) and S3 (a second storage backend on
+the forge API) are each a project, and this spec's own Sequencing puts them at steps 5 and
+6. Each needs its own spec, written when its turn comes. They are recorded here as
+direction, not as work.
+
+> **Q5.** (in the companion spec) `FileRegistry.SourceURL`: "Keep the bare object path, or
+> drop the field."
+
+**Decision: keep the field, store only the bare object path** — strip the query string.
+Recorded in `specs/todos/2026-08-20-sharded-registry-index.md`.
+
+## Disposition
+
+| Item | Where it lives now |
+|---|---|
+| Tier 1 — container limit, `GOGC`, 20 GB PVC | Ops repository, by hand (Q2, Q3) |
+| Tier 1 — `GOMEMLIMIT` from cgroup | `specs/todos/2026-08-20-gomemlimit-from-cgroup.md` |
+| Tier 2a — targeted staging | `specs/todos/2026-08-20-git-targeted-staging.md` |
+| Tier 2b — shallow clone | `specs/todos/2026-08-20-git-shallow-clone.md` |
+| S1a — sharded registry index | `specs/todos/2026-08-20-sharded-registry-index.md` |
+| S1b — 512 KB attachment cap | `specs/todos/2026-08-20-max-file-size-512kb.md` |
+| S1c — history rewrite | **Parked.** Manual, supervised, after S1a+S1b are stable (Q1) |
+| S2 — real `git` binary backend | **Parked.** Needs its own spec (Q4) |
+| S3 — forge API backend | **Parked.** Needs its own spec (Q4) |
