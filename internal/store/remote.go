@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -38,7 +39,16 @@ const (
 	StorageModeLocal StorageMode = "local"
 	// StorageModeRemote uses remote storage (pull/push enabled).
 	StorageModeRemote StorageMode = "remote"
+	// StorageModeGitHub talks to the GitHub Git Data API directly, with no
+	// clone and no working tree. Opt-in only, see docs/github-storage.md.
+	StorageModeGitHub StorageMode = "github"
 )
+
+// gitHubHost is the only forge host the GitHub API backend accepts.
+const gitHubHost = "github.com"
+
+// gitHubOwnerRepoParts is the number of path components in "owner/repo".
+const gitHubOwnerRepoParts = 2
 
 // RemoteConfig holds configuration for remote git operations.
 type RemoteConfig struct {
@@ -138,8 +148,11 @@ func (c *RemoteConfig) EffectiveStorageMode() StorageMode {
 	if c == nil {
 		return StorageModeLocal
 	}
-	if c.Storage == StorageModeLocal || c.Storage == StorageModeRemote {
+	switch c.Storage {
+	case StorageModeLocal, StorageModeRemote, StorageModeGitHub:
 		return c.Storage
+	case StorageModeAuto:
+		// Fall through to auto-detection below.
 	}
 	// Auto-detect: use remote if URL is configured
 	if c.URL != "" {
@@ -160,6 +173,91 @@ func (c *RemoteConfig) IsEnabled() bool {
 	}
 	// Remote requires a URL
 	return c.URL != ""
+}
+
+// IsGitHubAPI returns true when the GitHub Git Data API backend is selected.
+func (c *RemoteConfig) IsGitHubAPI() bool {
+	if c == nil {
+		return false
+	}
+	return c.EffectiveStorageMode() == StorageModeGitHub
+}
+
+// GitHubRepo parses NTN_GIT_URL into a GitHub owner and repository name and
+// validates that a token is available. It is the startup validation for
+// NTN_STORAGE=github.
+func (c *RemoteConfig) GitHubRepo() (owner, repo string, err error) { //nolint:nonamedreturns // named for documentation
+	if c == nil || c.URL == "" {
+		return "", "", apperrors.ErrRemoteNotConfiguredSetURL
+	}
+
+	owner, repo, err = ParseGitHubRepo(c.URL)
+	if err != nil {
+		return "", "", err
+	}
+
+	if c.Password == "" {
+		return "", "", apperrors.ErrGitHubTokenRequired
+	}
+
+	return owner, repo, nil
+}
+
+// ParseGitHubRepo extracts the owner and repository name from a GitHub URL.
+// It accepts https://, ssh:// and scp-style (git@github.com:owner/repo) forms,
+// with or without a ".git" suffix and with or without embedded credentials.
+func ParseGitHubRepo(rawURL string) (owner, repo string, err error) { //nolint:nonamedreturns // named for documentation
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return "", "", apperrors.ErrRemoteNotConfiguredSetURL
+	}
+
+	host, path, err := splitGitURL(trimmed)
+	if err != nil {
+		return "", "", err
+	}
+
+	if !isGitHubHost(host) {
+		return "", "", fmt.Errorf("%w: %s", apperrors.ErrNotGitHubURL, rawURL)
+	}
+
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) != gitHubOwnerRepoParts || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("%w: %s", apperrors.ErrNotGitHubURL, rawURL)
+	}
+
+	return parts[0], strings.TrimSuffix(parts[1], ".git"), nil
+}
+
+// isGitHubHost reports whether a URL host (possibly with a port) is github.com.
+func isGitHubHost(host string) bool {
+	host = strings.ToLower(host)
+	if idx := strings.IndexByte(host, ':'); idx >= 0 {
+		host = host[:idx]
+	}
+	return host == gitHubHost || host == "www."+gitHubHost
+}
+
+// splitGitURL splits a git remote URL into its host and path components,
+// handling the scp-style "git@host:owner/repo" syntax that url.Parse rejects.
+func splitGitURL(rawURL string) (host, path string, err error) { //nolint:nonamedreturns // named for documentation
+	if !strings.Contains(rawURL, "://") {
+		// scp-style: [user@]host:path
+		at := strings.LastIndex(rawURL, "@")
+		remainder := rawURL[at+1:]
+		colon := strings.Index(remainder, ":")
+		if colon < 0 {
+			return "", "", fmt.Errorf("%w: %s", apperrors.ErrNotGitHubURL, rawURL)
+		}
+		return remainder[:colon], remainder[colon+1:], nil
+	}
+
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", "", fmt.Errorf("parse remote URL %q: %w", rawURL, err)
+	}
+
+	return parsed.Host, parsed.Path, nil
 }
 
 // HasQueueBranch returns true if a separate queue branch is configured.
@@ -236,6 +334,14 @@ func (c *RemoteConfig) GetAuth() (transport.AuthMethod, error) {
 func (c *RemoteConfig) TestConnection(ctx context.Context) error {
 	if !c.IsEnabled() {
 		return apperrors.ErrRemoteNotConfigured
+	}
+
+	if c.IsGitHubAPI() {
+		apiStore, err := NewGitHubStore(c)
+		if err != nil {
+			return err
+		}
+		return apiStore.TestConnection(ctx)
 	}
 
 	auth, err := c.GetAuth()
