@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/fclairamb/ntnsync/internal/notion"
@@ -119,9 +120,20 @@ func TestSavePageRegistry_NormalizesDashedID(t *testing.T) {
 		t.Fatalf("savePageRegistry: %v", saveErr)
 	}
 
+	if flushErr := crawler.FlushRegistries(ctx); flushErr != nil {
+		t.Fatalf("FlushRegistries: %v", flushErr)
+	}
+
 	idsDirPath := filepath.Join(tmpDir, ".notion-sync/ids")
-	if _, statErr := os.Stat(filepath.Join(idsDirPath, "page-"+normalizedID+".json")); statErr != nil {
-		t.Errorf("expected normalized registry file to exist: %v", statErr)
+	shard, readErr := os.ReadFile(filepath.Join(idsDirPath, "page", normalizedID[:2]+".jsonl"))
+	if readErr != nil {
+		t.Fatalf("expected the page shard to exist: %v", readErr)
+	}
+	if !strings.Contains(string(shard), `"id":"`+normalizedID+`"`) {
+		t.Errorf("shard does not hold the normalized id: %s", shard)
+	}
+	if strings.Contains(string(shard), dashedID) {
+		t.Errorf("shard must not hold the dashed id: %s", shard)
 	}
 	if _, statErr := os.Stat(filepath.Join(idsDirPath, "page-"+dashedID+".json")); !os.IsNotExist(statErr) {
 		t.Errorf("dashed registry file must not be written (stat err = %v)", statErr)

@@ -2,6 +2,7 @@ package sync
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/fclairamb/ntnsync/internal/apperrors"
 	"github.com/fclairamb/ntnsync/internal/notion"
@@ -35,4 +36,15 @@ func validateFolderName(folder string) error {
 	}
 
 	return nil
+}
+
+// stripURLQuery removes the query string from a URL.
+//
+// Notion serves attachments through pre-signed S3 URLs whose query carries ~2 KB
+// of credentials, signature and expiry. That payload is never read back and
+// rotates on every fetch, so storing it churns the registry record even when the
+// file itself has not changed. Only the bare object path is kept.
+func stripURLQuery(rawURL string) string {
+	bare, _, _ := strings.Cut(rawURL, "?")
+	return bare
 }

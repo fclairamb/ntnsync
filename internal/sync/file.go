@@ -281,7 +281,7 @@ func (c *Crawler) processFileURL(ctx context.Context, fileURL, pageFilePath, pag
 		NtnsyncVersion: version.Version,
 		ID:             fileID,
 		FilePath:       localPath,
-		SourceURL:      fileURL,
+		SourceURL:      stripURLQuery(fileURL),
 		LastSynced:     time.Now(),
 	}
 	if err := c.saveFileRegistry(ctx, reg); err != nil {

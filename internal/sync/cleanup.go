@@ -146,15 +146,3 @@ func (c *Crawler) deleteFile(ctx context.Context, filePath string) error {
 	}
 	return nil
 }
-
-// deletePageRegistry deletes a page registry file.
-func (c *Crawler) deletePageRegistry(ctx context.Context, pageID string) error {
-	path := fmt.Sprintf("%s/%s/page-%s.json", stateDir, idsDir, pageID)
-	if err := c.tx.Delete(ctx, path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("delete registry: %w", err)
-	}
-	return nil
-}

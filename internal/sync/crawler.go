@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"log/slog"
+	gosync "sync"
 
 	"github.com/fclairamb/ntnsync/internal/converter"
 	"github.com/fclairamb/ntnsync/internal/notion"
@@ -50,6 +51,16 @@ type Crawler struct {
 	queueManager *queue.Manager
 	converter    *converter.Converter
 	logger       *slog.Logger
+
+	// Sharded registry index. Registry writes are buffered here and flushed
+	// once per commit cycle (see FlushRegistries).
+	pageIndex *shardIndex[PageRegistry]
+	fileIndex *shardIndex[FileRegistry]
+	userIndex *shardIndex[UserRegistry]
+
+	registryMutex  gosync.Mutex
+	legacyDrop     map[string]bool // pre-shard registry files to delete on flush
+	manifestSynced bool
 }
 
 // CrawlerOption configures the crawler.
@@ -71,6 +82,16 @@ func NewCrawler(client *notion.Client, st store.Store, opts ...CrawlerOption) *C
 		queueManager: queue.NewManager(st, slog.Default()),
 		converter:    converter.NewConverter(),
 		logger:       slog.Default(),
+		pageIndex: newShardIndex(pageShardDir, func(reg *PageRegistry) string {
+			return normalizePageID(reg.ID)
+		}),
+		fileIndex: newShardIndex(fileShardDir, func(reg *FileRegistry) string {
+			return reg.ID
+		}),
+		userIndex: newSingleShardIndex(userShardName, func(reg *UserRegistry) string {
+			return reg.ID
+		}),
+		legacyDrop: make(map[string]bool),
 	}
 
 	for _, opt := range opts {
@@ -104,8 +125,11 @@ func (c *Crawler) SetTransaction(tx store.Transaction) {
 }
 
 // Commit commits the current transaction with the given message.
-// After commit, a new transaction is automatically started.
+// Buffered registry writes are flushed first so they are part of the commit.
 func (c *Crawler) Commit(ctx context.Context, message string) error {
+	if err := c.FlushRegistries(ctx); err != nil {
+		return err
+	}
 	if c.tx == nil {
 		return nil
 	}
