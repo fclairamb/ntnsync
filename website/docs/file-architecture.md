@@ -25,9 +25,15 @@ ntnsync uses a folder-based organization system to store synced Notion pages as 
     ├── queue/                       # Pending sync queue
     │   ├── 00000001.json
     │   └── 00000002.json
-    └── ids/                         # Page registries
-        ├── page-{id}.json
-        └── file-{id}.json
+    └── ids/                        # Sharded registry index
+        ├── manifest.json           # ntnsync_version + schema_version, once
+        ├── page/
+        │   ├── 00.jsonl            # 256 shards, keyed by the first two hex
+        │   └── ...                 # characters of the normalized page ID
+        ├── file/
+        │   ├── 00.jsonl
+        │   └── ...
+        └── user.jsonl              # too few users to be worth sharding
 ```
 
 ## Folders
@@ -59,11 +65,53 @@ Folders are logical organization units for grouping related pages.
 | `last_pull_time` | timestamp | When `pull` command last completed (optional) |
 | `oldest_pull_result` | timestamp | Oldest page seen in last pull for early stopping (optional) |
 
+## Registry Index
+
+**Path**: `.notion-sync/ids/`
+
+The registry index tracks metadata for every synced page, downloaded file and
+cached user. It is stored as **sharded JSON Lines**, not as one file per record.
+
+```
+.notion-sync/ids/
+  manifest.json      {"ntnsync_version": "...", "schema_version": 1}
+  page/00.jsonl … page/ff.jsonl      256 shards
+  file/00.jsonl … file/ff.jsonl      256 shards
+  user.jsonl                          single file
+```
+
+| Property | Rule |
+|----------|------|
+| Shard key | First two hex characters of the normalized (dash-less) ID |
+| Format | JSON Lines — one compact record per line |
+| Key order | Sorted alphabetically inside each record |
+| Record order | Sorted by `id` inside each shard |
+| Version | `ntnsync_version` lives once in `manifest.json`, never per record |
+
+> **Why sharded.** Git rewrites a directory's whole tree object whenever any file
+> inside it changes. A flat `ids/` directory with 41,000 entries emitted a fresh
+> ~2.9 MB tree object on *every* sync commit, which dominated both the pack size
+> and the memory used to decode trees during clone/checkout. 256 shards keep the
+> tree trivial while each shard stays small enough to delta-compress well. The
+> deterministic ordering is what makes a one-record change a one-line diff.
+
+**Writes are batched**: records are buffered in memory and every affected shard is
+written exactly once per commit cycle, so a sync touching 50 pages does not
+rewrite the same shard 50 times.
+
+### Migration from the per-file layout
+
+Older repositories stored one file per record
+(`.notion-sync/ids/page-{id}.json`). Reads still fall back to those locations, so
+an un-migrated repository keeps working. Run `ntnsync reindex --compact` once to
+convert every legacy file into the shards and delete the old files in a single
+commit.
+
 ## Page Registries
 
-**Path**: `.notion-sync/ids/page-{id}.json`
+**Path**: `.notion-sync/ids/page/{shard}.jsonl`
 
-Registry files track metadata for each synced page. The ID in the filename **and** the `id` field are normalized (no dashes).
+Page records track metadata for each synced page. The `id` field is normalized (no dashes).
 
 > **Why normalization matters.** Notion's REST API and webhook events deliver IDs
 > in the dashed UUID form (`388aa28b-3ffb-80b6-9e5b-c6a0eeaebf64`); everything in
@@ -73,8 +121,8 @@ Registry files track metadata for each synced page. The ID in the filename **and
 > page fails its file-path stability check and the conflict resolver no longer
 > recognizes it as itself — so it is written to a second, suffixed file (see
 > *Filename Conflicts*). Reads (`loadPageRegistry`) fall back to the dashed form
-> for backward compatibility, and a normal re-sync rewrites the entry under the
-> normalized name and removes the stale dashed file.
+> for backward compatibility, and a normal re-sync rewrites the entry into the
+> shard under the normalized ID and removes the stale dashed file.
 
 ```json
 {
@@ -108,7 +156,7 @@ Registry files track metadata for each synced page. The ID in the filename **and
 
 ## File Registries
 
-**Path**: `.notion-sync/ids/file-{id}.json`
+**Path**: `.notion-sync/ids/file/{shard}.jsonl`
 
 Tracks downloaded files (images, PDFs, etc.) to avoid re-downloading.
 
@@ -120,6 +168,11 @@ Tracks downloaded files (images, PDFs, etc.) to avoid re-downloading.
   "last_synced": "2026-01-18T18:05:06Z"
 }
 ```
+
+`source_url` keeps only the bare object path. Notion hands out pre-signed S3 URLs
+whose query string carries ~2 KB of credentials, signature and expiry that are
+never read back and rotate on every fetch, so everything from `?` onwards is
+stripped before the record is written.
 
 ## Queue System
 
@@ -179,7 +232,7 @@ branch; everything else — page content, `.notion-sync/ids/` and
 | Path | Branch |
 |------|--------|
 | Page content (`tech/…`, `root.md`, …) | main |
-| `.notion-sync/ids/` | main |
+| `.notion-sync/ids/` (shards + manifest) | main |
 | `.notion-sync/state.json` | main |
 | `.notion-sync/queue/` | queue branch |
 

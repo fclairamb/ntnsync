@@ -298,16 +298,18 @@ Rebuild registry files from markdown files.
 
 ```bash
 ntnsync reindex [--dry-run]
+ntnsync reindex --compact [--dry-run]   # one-shot migration to the sharded index
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--dry-run` | false | Preview changes without modifying |
+| `--compact` | false | Migrate legacy per-record registry files into the sharded index |
 
 **Behavior**:
 - Scans all markdown files recursively
 - Parses frontmatter for metadata
-- Rebuilds `.notion-sync/ids/page-{id}.json` registries
+- Rebuilds the page registries in `.notion-sync/ids/page/{shard}.jsonl`
 - Handles duplicates by keeping latest `last_edited`
 - Deletes older duplicate files
 - Normalizes page IDs
@@ -316,6 +318,18 @@ ntnsync reindex [--dry-run]
 - Recover from deleted registry files
 - Fix corrupted registry data
 - Clean up duplicate pages
+
+#### reindex --compact
+
+One-shot migration of a repository still using the old layout (one JSON file per
+page, file and user in a single flat `.notion-sync/ids/` directory) to the
+sharded index. It reads every `page-*.json`, `file-*.json`, `user-*.json` (and
+the oldest `{id}.json` form), writes the shards, deletes the legacy files and
+commits — all in a single commit.
+
+Safe to run at any time: readers keep resolving the legacy locations until the
+migration commit lands, and running it again on an already-compact repository
+does nothing.
 - Rebuild after manual file edits
 
 ### remote
