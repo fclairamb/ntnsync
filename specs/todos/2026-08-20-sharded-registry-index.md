@@ -214,9 +214,12 @@ legacy files gone — but nothing is committed, and a re-run reports "registry
 index already compact" without committing, because it only looks for legacy
 files.
 
-No data is lost (the shards are on disk and readable), but the state does not
-self-heal: the store stages exactly the paths a transaction recorded, so a later
-sync commit will not pick up the orphaned changes either.
+No data is lost (the shards are on disk and readable), but the state usually
+does not self-heal: the store stages exactly the paths a transaction recorded,
+so an ordinary later sync commit will not pick up the orphaned changes. The one
+exception is a subsequent commit touching more than `maxTargetedStagingPaths`
+(500) paths, which falls back to whole-worktree staging and would absorb them —
+do not rely on that happening.
 
 Recovery is a plain git commit in the store directory:
 
