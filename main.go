@@ -29,6 +29,9 @@ func run() int {
 		cancel()
 	}()
 
+	// Bound the heap to the container's memory limit before doing anything else.
+	cmd.SetMemoryLimitFromCgroup()
+
 	// Run the CLI
 	app := cmd.NewApp()
 	if err := app.Run(ctx, os.Args); err != nil {
