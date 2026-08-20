@@ -870,6 +870,7 @@ func createStore(cmd *cli.Command) (store.Store, *store.RemoteConfig, error) {
 			Commit:       remoteConfig.Commit,
 			CommitPeriod: remoteConfig.CommitPeriod,
 			Push:         remoteConfig.Push,
+			Depth:        remoteConfig.Depth,
 		}
 
 		queueStore, err := store.NewLocalStore(queuePath,
