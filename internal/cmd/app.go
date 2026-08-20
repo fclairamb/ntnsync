@@ -30,6 +30,10 @@ const (
 	flagFolder = "folder"
 	// flagDryRun is the shared flag name for dry-run mode.
 	flagDryRun = "dry-run"
+
+	// flagCompact is the reindex flag that migrates the registry index to its
+	// sharded layout.
+	flagCompact = "compact"
 )
 
 var (
@@ -559,6 +563,10 @@ func reindexCommand() *cli.Command {
 				Name:  flagDryRun,
 				Usage: "Show what would be done without making changes",
 			},
+			&cli.BoolFlag{
+				Name:  flagCompact,
+				Usage: "Migrate the legacy per-page registry files into the sharded index",
+			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			setupLogging(cmd)
@@ -572,6 +580,14 @@ func reindexCommand() *cli.Command {
 
 			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 			dryRun := cmd.Bool(flagDryRun)
+
+			if cmd.Bool(flagCompact) {
+				if err := crawler.Compact(ctx, dryRun); err != nil {
+					return fmt.Errorf("reindex --compact: %w", err)
+				}
+
+				return nil
+			}
 
 			if err := crawler.Reindex(ctx, dryRun); err != nil {
 				return fmt.Errorf("reindex: %w", err)
