@@ -345,6 +345,18 @@ ntnsync remote test
 | `NTN_GIT_USER` | Git commit author name (default: `ntnsync`) |
 | `NTN_GIT_EMAIL` | Git commit author email (default: `ntnsync@localhost`) |
 | `NTN_STORAGE` | Storage mode: `local` or `remote` (auto-detected from `NTN_GIT_URL`) |
+| `NTN_GIT_DEPTH` | Shallow clone/fetch depth (default: `1`). `0` fetches full history |
+
+**`NTN_GIT_DEPTH`**: Controls how much git history is cloned and kept in sync.
+- `1` (default): Shallow clone/fetch — only the latest commit. ntnsync never
+  reads history, so this significantly reduces clone time and memory usage on
+  large repositories.
+- `0`: Full history (opt-out of shallow cloning).
+- Any other positive integer: Keep that many commits of history.
+- Applies to the initial clone and to subsequent pulls/fetches, including the
+  queue branch clone when `NTN_QUEUE_BRANCH` is set.
+- An unset or malformed value falls back to the default (`1`) rather than
+  failing startup.
 
 **`NTN_QUEUE_BRANCH`**: When set, the rapidly-churning sync queue (`.notion-sync/queue`)
 is committed to a separate branch instead of the main branch. Page content,

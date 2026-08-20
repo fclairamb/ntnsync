@@ -265,6 +265,7 @@ See [deployment docs](website/docs/deployment.md) for the full setup including S
 | `NTN_QUEUE_BRANCH` | | Commit `.notion-sync/queue/` to a separate branch (e.g. `queue`), keeping high-frequency queue commits out of the main history |
 | `NTN_GIT_USER` | `ntnsync` | Git commit author name |
 | `NTN_GIT_EMAIL` | `ntnsync@localhost` | Git commit author email |
+| `NTN_GIT_DEPTH` | `1` | Shallow clone/fetch depth. `1` keeps only the latest commit (default); `0` fetches full history |
 
 ### Performance
 
