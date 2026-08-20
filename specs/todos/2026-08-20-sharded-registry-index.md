@@ -164,3 +164,43 @@ around line 284) so both new records and records rewritten by the migration are 
   migration commit lands.
 - The one-shot migration (`ntnsync reindex --compact`) converts every legacy file, writes the
   shards, and deletes the old files in a single commit.
+
+## Implementation Plan
+
+1. **`internal/sync/shard.go` — the sharded index layer.**
+   - `shardKeyFor(id)` → first two hex chars of the normalized (dash-less, lower-cased) ID;
+     non-hex/short IDs fall back to an FNV-1a bucket so a shard name is always valid.
+   - `shardIndex[T]`: a generic read-through cache + dirty buffer. Fields: `keyFor`,
+     `pathFor`, `idOf`, an LRU of at most 32 parsed shards, and `dirty`
+     (`shardKey → id → *T`, a `nil` value being a tombstone).
+   - `canonicalRecordJSON` marshals a record to compact JSON with **sorted keys**
+     (marshal → `map[string]json.RawMessage` → marshal) and strips `ntnsync_version`.
+   - Shard files are JSON Lines sorted by `id`; an empty shard is deleted.
+   - `.notion-sync/ids/manifest.json` carries `ntnsync_version` + `schema_version` once.
+
+2. **`internal/sync/registry.go` — rewire the registry surface.**
+   - `save*Registry` records a dirty record (no I/O) and marks the entity's legacy
+     files for removal; `load*Registry` reads the shard first, then falls through the
+     existing legacy chain (`page-{normalized}.json`, `page-{dashed}.json`,
+     `{normalized}.json`).
+   - `listPageRegistries` reads the shard directory, then overlays any legacy
+     `page-*.json` not yet migrated, de-duplicated by normalized ID.
+   - `deletePageRegistry` tombstones the shard record and drops legacy files.
+
+3. **Batched flush.** `Crawler.FlushRegistries` groups dirty records by shard and writes
+   each shard **once**, then deletes the legacy files queued for removal. Called from
+   `Crawler.Commit` / `Crawler.CommitChanges` (before the git commit) and at the end of
+   every registry-mutating entry point (`ProcessQueueWithCallback`, `Pull`, `AddDatabase`,
+   `AddRootPage`, `GetPage`, `ReconcileRootMd`, `Cleanup`, `Reindex`).
+
+4. **`SourceURL` normalization.** `stripURLQuery` applied at the `SourceURL: fileURL`
+   assignment in `internal/sync/file.go` and again in `saveFileRegistry`, so records
+   rewritten by the migration are normalized too.
+
+5. **Migration.** `ntnsync reindex --compact` → `Crawler.Compact(ctx, dryRun)`: reads every
+   legacy `page-*.json` / `file-*.json` / `user-*.json`, feeds them into the indices,
+   flushes the shards, deletes the legacy files and commits once.
+
+6. **Docs + tests.** `docs/file-architecture.md` describes the new layout; tests cover
+   shard-key derivation, round-trip, deterministic ordering, legacy fallback, mixed
+   `listPageRegistries`, one-write-per-shard batching and the `--compact` migration.
