@@ -20,6 +20,9 @@ import (
 // gitRemoteOrigin is the conventional git remote name for the primary remote.
 const gitRemoteOrigin = "origin"
 
+// defaultBranch is the branch name used when NTN_GIT_BRANCH is not set.
+const defaultBranch = "main"
+
 // defaultGitDepth is the default shallow-clone/fetch depth (NTN_GIT_DEPTH).
 // Nothing in ntnsync reads git history, so shallow clones are the default;
 // set NTN_GIT_DEPTH=0 to opt out and use full history.
@@ -67,7 +70,7 @@ func LoadRemoteConfigFromEnv() *RemoteConfig {
 
 	// Apply defaults
 	if cfg.Branch == "" {
-		cfg.Branch = "main"
+		cfg.Branch = defaultBranch
 	}
 	if cfg.User == "" {
 		cfg.User = "ntnsync"

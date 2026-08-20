@@ -755,7 +755,7 @@ func (s *LocalStore) initNewRepo(path string) (*git.Repository, error) {
 // setDefaultBranch sets HEAD to point to the configured branch.
 // This ensures the repo uses the correct branch name (e.g., "main" instead of "master").
 func (s *LocalStore) setDefaultBranch(repo *git.Repository) error {
-	branch := "main"
+	branch := defaultBranch
 	if s.remoteConfig != nil && s.remoteConfig.Branch != "" {
 		branch = s.remoteConfig.Branch
 	}
