@@ -18,7 +18,7 @@ func TestGetMaxFileSize_Default(t *testing.T) {
 }
 
 // TestGetMaxFileSize_Override verifies NTN_MAX_FILE_SIZE still overrides the
-// default, e.g. to restore the previous 5MB behaviour.
+// default, e.g. to restore the previous 5MB behavior.
 func TestGetMaxFileSize_Override(t *testing.T) {
 	// Cannot use t.Parallel() with t.Setenv
 	ResetConfig()
