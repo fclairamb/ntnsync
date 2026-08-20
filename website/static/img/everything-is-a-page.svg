@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 320" font-family="var(--ifm-font-family-base)">
+  <!-- column headers -->
+  <text x="20" y="24" font-size="11" letter-spacing="1.6" fill="var(--ntn-hosted)">IN NOTION</text>
+  <text x="470" y="24" font-size="11" letter-spacing="1.6" fill="var(--ntn-owned)">ON DISK</text>
+  <path d="M20 34 H410" stroke="var(--ifm-color-emphasis-300)" stroke-width="1" fill="none"/>
+  <path d="M470 34 H860" stroke="var(--ifm-color-emphasis-300)" stroke-width="1" fill="none"/>
+
+  <!-- row 1: page -->
+  <rect x="20" y="46" width="390" height="58" rx="9" fill="var(--ntn-hosted)" fill-opacity="0.09" stroke="var(--ntn-hosted)" stroke-width="1.5"/>
+  <text x="38" y="72" font-size="15" font-weight="700" fill="var(--ntn-hosted)">Page</text>
+  <text x="38" y="92" font-size="12.5" fill="var(--ifm-color-emphasis-600)">&#8220;Engineering Wiki&#8221;</text>
+  <rect x="470" y="46" width="390" height="58" rx="9" fill="var(--ntn-owned)" fill-opacity="0.09" stroke="var(--ntn-owned)" stroke-width="1.5"/>
+  <text x="488" y="72" font-size="14" font-family="var(--ifm-font-family-monospace)" fill="var(--ntn-owned)">tech/engineering-wiki.md</text>
+  <text x="488" y="92" font-size="12" font-family="var(--ifm-font-family-monospace)" fill="var(--ifm-color-emphasis-600)">notion_type: page</text>
+  <path d="M414 75 H452" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.6" fill="none"/>
+  <path d="M452 68.5 L461 75 L452 81.5 Z" fill="var(--ifm-color-emphasis-600)"/>
+
+  <!-- row 2: database -->
+  <rect x="20" y="124" width="390" height="58" rx="9" fill="var(--ntn-hosted)" fill-opacity="0.09" stroke="var(--ntn-hosted)" stroke-width="1.5"/>
+  <text x="38" y="150" font-size="15" font-weight="700" fill="var(--ntn-hosted)">Database</text>
+  <text x="38" y="170" font-size="12.5" fill="var(--ifm-color-emphasis-600)">&#8220;Releases&#8221;</text>
+  <rect x="470" y="124" width="390" height="58" rx="9" fill="var(--ntn-owned)" fill-opacity="0.09" stroke="var(--ntn-owned)" stroke-width="1.5"/>
+  <text x="488" y="150" font-size="14" font-family="var(--ifm-font-family-monospace)" fill="var(--ntn-owned)">releases/releases.md</text>
+  <text x="488" y="170" font-size="12" font-family="var(--ifm-font-family-monospace)" fill="var(--ifm-color-emphasis-600)">notion_type: database</text>
+  <path d="M414 153 H452" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.6" fill="none"/>
+  <path d="M452 146.5 L461 153 L452 159.5 Z" fill="var(--ifm-color-emphasis-600)"/>
+
+  <!-- row 3: a row inside the database, nested -->
+  <path d="M34 182 V232 H50" stroke="var(--ntn-hosted)" stroke-width="1.4" stroke-dasharray="5 5" fill="none"/>
+  <rect x="56" y="202" width="354" height="60" rx="9" fill="var(--ntn-hosted)" fill-opacity="0.06" stroke="var(--ntn-hosted)" stroke-width="1.4" stroke-dasharray="5 5"/>
+  <text x="74" y="228" font-size="15" font-weight="700" fill="var(--ntn-hosted)">Row</text>
+  <text x="74" y="248" font-size="12.5" fill="var(--ifm-color-emphasis-600)">&#8220;client-platform v0.74.0&#8221;</text>
+  <rect x="470" y="202" width="390" height="60" rx="9" fill="var(--ntn-owned)" fill-opacity="0.09" stroke="var(--ntn-owned)" stroke-width="1.5"/>
+  <text x="488" y="226" font-size="14" font-family="var(--ifm-font-family-monospace)" fill="var(--ntn-owned)">releases/client-platform-v0740.md</text>
+  <text x="488" y="248" font-size="12" font-family="var(--ifm-font-family-monospace)" fill="var(--ifm-color-emphasis-600)">notion_type: page + properties:</text>
+  <path d="M414 232 H452" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.6" fill="none"/>
+  <path d="M452 225.5 L461 232 L452 238.5 Z" fill="var(--ifm-color-emphasis-600)"/>
+
+  <!-- caption -->
+  <text x="440" y="298" text-anchor="middle" font-size="14" fill="var(--ifm-font-color-base)">Three different Notion concepts. One shape on disk: a markdown file.</text>
+</svg>

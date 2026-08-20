@@ -24,3 +24,49 @@
   --ifm-color-primary-lightest: #4fddbf;
   --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
 }
+
+/* --------------------------------------------------------------------------
+ * ntnsync diagram tokens.
+ *
+ * Two theme states only: :root and [data-theme="dark"]. Docusaurus always
+ * stamps data-theme on <html>, so there is no un-stamped state to design for
+ * and no prefers-color-scheme query is needed.
+ *
+ * Colour carries meaning across every diagram:
+ *   --ntn-hosted  clay  - lives in Notion, can go away
+ *   --ntn-owned   green - on disk, permanent (close to the site primary)
+ * Everything else in the diagrams reuses Infima variables.
+ * ------------------------------------------------------------------------ */
+
+:root {
+  --ntn-hosted: #a65a3a;
+  --ntn-owned: #2f6f4e;
+}
+
+[data-theme="dark"] {
+  --ntn-hosted: #d08a66;
+  --ntn-owned: #6fbf92;
+}
+
+/* Diagram wrapper: the diagram itself may scroll, the page body never does. */
+.ntnDiagram {
+  overflow-x: auto;
+  margin: 1.75rem 0;
+  padding-bottom: 0.25rem;
+}
+
+.ntnDiagram svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  /* Below this the labels stop being readable, so scroll the container
+     instead of shrinking the type. */
+  min-width: 620px;
+}
+
+.ntnDiagramCaption {
+  margin-top: -0.75rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.875rem;
+}
