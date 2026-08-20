@@ -16,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
@@ -28,6 +29,12 @@ const (
 	// File and directory permissions.
 	dirPerm  = 0750 // Directory permissions: rwxr-x---
 	filePerm = 0600 // File permissions: rw-------
+
+	// maxTargetedStagingPaths is the number of modified paths above which
+	// staging each path individually stops paying off. Every targeted add
+	// decodes and re-encodes the whole index, so past this many paths the
+	// single whole-worktree merkletrie walk is cheaper.
+	maxTargetedStagingPaths = 500
 )
 
 // LocalStore implements Store using local filesystem and git.
@@ -514,6 +521,173 @@ func (t *localTransaction) Mkdir(_ context.Context, path string) error {
 	return nil
 }
 
+// stageTargeted stages exactly the paths recorded in modifiedPaths, avoiding the
+// two whole-worktree walks performed by AddWithOptions{All: true} + Status().
+//
+// A path that still exists on disk is staged with SkipStatus so go-git does not
+// fall back to a full Status() walk. A path that no longer exists was deleted by
+// Delete, so it is removed from the index instead; a path written and then
+// deleted within the same transaction was never in the index, which is not an
+// error here.
+func (t *localTransaction) stageTargeted(worktree *git.Worktree) error {
+	for path := range t.modifiedPaths {
+		gitPath := filepath.ToSlash(path)
+		fullPath := filepath.Join(t.store.rootPath, filepath.FromSlash(path))
+
+		_, statErr := os.Lstat(fullPath)
+		if statErr == nil {
+			if err := worktree.AddWithOptions(&git.AddOptions{Path: gitPath, SkipStatus: true}); err != nil {
+				return fmt.Errorf("git add %s: %w", path, err)
+			}
+			continue
+		}
+
+		if !os.IsNotExist(statErr) {
+			return fmt.Errorf("stat %s: %w", path, statErr)
+		}
+
+		if _, err := worktree.Remove(gitPath); err != nil {
+			// The path was never tracked (written and deleted in the same
+			// transaction, or already absent from the index): nothing to stage.
+			if errors.Is(err, index.ErrEntryNotFound) {
+				continue
+			}
+			return fmt.Errorf("git rm %s: %w", path, err)
+		}
+	}
+
+	return nil
+}
+
+// headTree returns the tree of the current HEAD commit, or nil when the
+// repository has no commit yet.
+func (t *localTransaction) headTree() (*object.Tree, error) {
+	head, err := t.store.repo.Head()
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return nil, nil //nolint:nilnil // no HEAD yet is a valid, non-error state
+		}
+		return nil, fmt.Errorf("resolve HEAD: %w", err)
+	}
+
+	commit, err := t.store.repo.CommitObject(head.Hash())
+	if err != nil {
+		return nil, fmt.Errorf("read HEAD commit: %w", err)
+	}
+
+	tree, err := commit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("read HEAD tree: %w", err)
+	}
+
+	return tree, nil
+}
+
+// stagedPathsDiffer reports whether the index differs from HEAD for any of the
+// paths recorded in modifiedPaths. A path may be listed there while its content
+// is identical to HEAD (a rewrite with the same bytes); staging it is a no-op
+// for the resulting tree and must not be counted as a change, otherwise empty
+// commits would be created.
+func (t *localTransaction) stagedPathsDiffer() (bool, error) {
+	idx, err := t.store.repo.Storer.Index()
+	if err != nil {
+		return false, fmt.Errorf("read index: %w", err)
+	}
+
+	tree, err := t.headTree()
+	if err != nil {
+		return false, err
+	}
+
+	for path := range t.modifiedPaths {
+		gitPath := filepath.ToSlash(path)
+
+		indexHash, inIndex, err := indexEntryHash(idx, gitPath)
+		if err != nil {
+			return false, err
+		}
+
+		headHash, inHead, err := treeEntryHash(tree, gitPath)
+		if err != nil {
+			return false, err
+		}
+
+		if inIndex != inHead || indexHash != headHash {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// indexEntryHash returns the blob hash staged for gitPath and whether the path
+// is present in the index at all.
+func indexEntryHash(idx *index.Index, gitPath string) (plumbing.Hash, bool, error) {
+	entry, err := idx.Entry(gitPath)
+	if err != nil {
+		if errors.Is(err, index.ErrEntryNotFound) {
+			return plumbing.ZeroHash, false, nil
+		}
+		return plumbing.ZeroHash, false, fmt.Errorf("index entry %s: %w", gitPath, err)
+	}
+
+	return entry.Hash, true, nil
+}
+
+// treeEntryHash returns the blob hash recorded for gitPath in tree and whether
+// the path is present in it. A nil tree (no HEAD yet) has no entries.
+func treeEntryHash(tree *object.Tree, gitPath string) (plumbing.Hash, bool, error) {
+	if tree == nil {
+		return plumbing.ZeroHash, false, nil
+	}
+
+	entry, err := tree.FindEntry(gitPath)
+	if err != nil {
+		if errors.Is(err, object.ErrEntryNotFound) || errors.Is(err, object.ErrDirectoryNotFound) {
+			return plumbing.ZeroHash, false, nil
+		}
+		return plumbing.ZeroHash, false, fmt.Errorf("HEAD entry %s: %w", gitPath, err)
+	}
+
+	return entry.Hash, true, nil
+}
+
+// stageWholeWorktree is the fallback used above maxTargetedStagingPaths, where
+// the per-path index rewrites cost more than a single merkletrie walk.
+func stageWholeWorktree(worktree *git.Worktree) (bool, error) {
+	// Stage all changes in the worktree (equivalent to git add -A).
+	if err := worktree.AddWithOptions(&git.AddOptions{All: true}); err != nil {
+		return false, fmt.Errorf("git add: %w", err)
+	}
+
+	status, err := worktree.Status()
+	if err != nil {
+		return false, fmt.Errorf("get status: %w", err)
+	}
+
+	for _, fileStatus := range status {
+		if fileStatus.Staging != ' ' {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// stageChanges stages the transaction's pending changes and reports whether the
+// resulting index differs from HEAD.
+func (t *localTransaction) stageChanges(worktree *git.Worktree) (bool, error) {
+	if len(t.modifiedPaths) > maxTargetedStagingPaths {
+		return stageWholeWorktree(worktree)
+	}
+
+	if err := t.stageTargeted(worktree); err != nil {
+		return false, err
+	}
+
+	return t.stagedPathsDiffer()
+}
+
 // Commit stages all changes and creates a git commit.
 // After commit, the transaction can continue to be used for more changes.
 func (t *localTransaction) Commit(_ context.Context, message string) error {
@@ -532,23 +706,9 @@ func (t *localTransaction) Commit(_ context.Context, message string) error {
 		return fmt.Errorf("get worktree: %w", err)
 	}
 
-	// Stage all changes in the worktree (equivalent to git add -A)
-	if addErr := worktree.AddWithOptions(&git.AddOptions{All: true}); addErr != nil {
-		return fmt.Errorf("git add: %w", addErr)
-	}
-
-	// Check if there are any staged changes
-	status, err := worktree.Status()
+	hasChanges, err := t.stageChanges(worktree)
 	if err != nil {
-		return fmt.Errorf("get status: %w", err)
-	}
-
-	hasChanges := false
-	for _, s := range status {
-		if s.Staging != ' ' {
-			hasChanges = true
-			break
-		}
+		return err
 	}
 
 	if !hasChanges {
