@@ -363,6 +363,8 @@ func (c *Crawler) CommitChanges(ctx context.Context, message string) error {
 		return fmt.Errorf("commit: %w", err)
 	}
 
+	c.invalidateRegistryCache()
+
 	c.logger.InfoContext(ctx, "changes committed")
 	return nil
 }

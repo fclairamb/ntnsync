@@ -136,6 +136,9 @@ func (c *Crawler) Commit(ctx context.Context, message string) error {
 	if err := c.tx.Commit(ctx, message); err != nil {
 		return err
 	}
+
+	c.invalidateRegistryCache()
+
 	return nil
 }
 

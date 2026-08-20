@@ -287,6 +287,20 @@ func (idx *shardIndex[T]) get(ctx context.Context, crawler *Crawler, recID strin
 	return cloneRecord(rec), shardFound, nil
 }
 
+// invalidate drops the parsed-shard cache. Pending writes are untouched.
+//
+// Called after a commit: the working tree may have been changed from underneath
+// us (a merge, a rebase during push, a manual edit), and a stale cached shard
+// would be written back verbatim on the next flush, silently dropping records
+// that arrived from elsewhere.
+func (idx *shardIndex[T]) invalidate() {
+	idx.mutex.Lock()
+	defer idx.mutex.Unlock()
+
+	idx.cache = make(map[string]map[string]*T)
+	idx.order = nil
+}
+
 // tombstones returns the IDs deleted but not yet flushed, so a caller scanning
 // legacy files does not resurrect them.
 func (idx *shardIndex[T]) tombstones() map[string]bool {

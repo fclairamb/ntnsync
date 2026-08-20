@@ -380,6 +380,14 @@ func (c *Crawler) FlushRegistries(ctx context.Context) error {
 	return nil
 }
 
+// invalidateRegistryCache drops every cached shard, so the next read comes from
+// disk. See shardIndex.invalidate.
+func (c *Crawler) invalidateRegistryCache() {
+	c.pageIndex.invalidate()
+	c.fileIndex.invalidate()
+	c.userIndex.invalidate()
+}
+
 // writeIDsManifest writes .notion-sync/ids/manifest.json, which holds the
 // ntnsync and schema versions once for the whole index instead of repeating
 // them in every record. Written at most once per crawler, and only when the
