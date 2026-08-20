@@ -191,3 +191,44 @@ switching a deployment to `github` mode.
 - Making this the default.
 - Whole-tree operations (see Scope).
 - Attachment storage anywhere other than blobs in the repository.
+
+## Implementation Plan
+
+1. **Interface groundwork** (`internal/store/store.go`)
+   - Add `RemoteStore` (`Store` + `Pull(ctx) error` + `IsRemoteEnabled() bool` +
+     `RemoteConfig() *RemoteConfig`) so `app.go` stops type-switching on concrete stores.
+   - Add `WholeTreeChecker` (`CheckWholeTreeSupported(command string) error`) as the
+     opt-in capability probe used to fail unsupported commands fast. Stores that do
+     not implement it are treated as fully capable, so the git backend is untouched.
+2. **Generalise `SplitStore`** (`internal/store/split.go`)
+   - Fields and constructor become `RemoteStore`; `storeFor` returns `RemoteStore`;
+     `ContentStore()` / `QueueStore()` return `RemoteStore`.
+   - `CheckWholeTreeSupported` delegates to the content store when it implements it.
+3. **Mode selection** (`internal/store/remote.go`)
+   - Add `StorageModeGitHub = "github"`; teach `EffectiveStorageMode` and `IsEnabled`.
+   - Add `ParseGitHubRepo(url)` supporting `https://`, `git@`, `ssh://` and embedded
+     credentials; reject non-github.com hosts with an actionable error.
+4. **GitHub API client** (`internal/store/github_api.go`)
+   - Hand-rolled `net/http` client, injectable `http.RoundTripper` and sleeper.
+   - Git Data API: `GET git/ref/heads/{branch}`, `GET git/commits/{sha}`,
+     `GET git/trees/{sha}` (never `recursive=1`), `GET git/blobs/{sha}`,
+     `POST git/blobs`, `POST git/trees`, `POST git/commits`,
+     `PATCH git/refs/heads/{branch}` (`force:false`), `POST git/refs`.
+   - Rate limiting: parse `X-RateLimit-*` on every response, block until reset when
+     remaining is at/below a floor, retry `403 remaining:0` / `429` / `5xx` with backoff.
+5. **`GitHubStore`** (`internal/store/github.go`)
+   - Lazy per-directory tree descent, LRU keyed by **tree SHA** (content-addressed, so
+     it can never go stale), bounded blob-body cache limited to `.notion-sync/ids/**`.
+   - `Read`/`Exists`/`List` consult open transactions' pending changes first.
+   - `Push` no-op, `Pull` refreshes HEAD + logs the rate budget,
+     `CheckWholeTreeSupported` rejects `reindex`/`cleanup`/`list --tree`.
+6. **Buffered transaction** (`internal/store/github_tx.go`)
+   - `Write`/`WriteStream`/`Delete` accumulate; `Mkdir` no-op; total buffered bytes
+     capped accounting for base64's 4/3 inflation.
+   - `Commit`: blobs once, then bounded rebuild-and-retry of tree/commit/ref on a
+     moved ref. Deletions become `sha: null` entries, filtered to paths that exist.
+7. **Wiring** (`internal/cmd/app.go`)
+   - Replace both type switches with `RemoteStore`; branch `createStore` on
+     `StorageModeGitHub`; gate `reindex`, `cleanup` and `list --tree`.
+8. **Tests** — all against a stub `http.RoundTripper`, no network, no token.
+9. **Docs** — `docs/file-architecture.md` / `CLAUDE.md` note for `NTN_STORAGE=github`.
