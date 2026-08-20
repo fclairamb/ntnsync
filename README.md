@@ -273,7 +273,7 @@ See [deployment docs](website/docs/deployment.md) for the full setup including S
 |----------|---------|-------------|
 | `NTN_BLOCK_DEPTH` | `0` | Max block discovery depth (0 = unlimited) |
 | `NTN_QUEUE_DELAY` | `0` | Delay between queue file processing |
-| `NTN_MAX_FILE_SIZE` | `5MB` | Max file size to download |
+| `NTN_MAX_FILE_SIZE` | `512KB` | Max file size to download |
 
 ### Webhook
 

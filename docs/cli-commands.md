@@ -41,7 +41,7 @@ NTN_LOG_FORMAT=json ./ntnsync sync -v
 |----------|---------|-------------|
 | `NTN_BLOCK_DEPTH` | `0` | Maximum depth for block discovery (0 = unlimited) |
 | `NTN_QUEUE_DELAY` | `0` | Delay between processing queue files (e.g., `5s`, `1m`) |
-| `NTN_MAX_FILE_SIZE` | `5MB` | Maximum file size to download |
+| `NTN_MAX_FILE_SIZE` | `512KB` | Maximum file size to download |
 
 **`NTN_BLOCK_DEPTH`**: Limits how deeply nested blocks are fetched.
 - `0` (default): Fetch all nested blocks (unlimited depth)

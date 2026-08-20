@@ -24,8 +24,8 @@ const (
 	bytesPerMB = 1024 * 1024
 	bytesPerGB = 1024 * 1024 * 1024
 
-	// Default max file size (5MB).
-	defaultMaxFileSize = 5 * bytesPerMB
+	// Default max file size (512KB).
+	defaultMaxFileSize = 512 * bytesPerKB
 )
 
 // ErrFileTooLarge is returned when a file exceeds the maximum size limit.
@@ -77,7 +77,7 @@ func extractFileIDFromURL(rawURL string) string {
 
 // downloadFile downloads a file from URL and saves it locally using streaming.
 // This avoids loading the entire file into memory.
-// Respects NTN_MAX_FILE_SIZE environment variable (default 5MB).
+// Respects NTN_MAX_FILE_SIZE environment variable (default 512KB).
 func (c *Crawler) downloadFile(ctx context.Context, fileURL, localPath string) error {
 	maxSize := getMaxFileSize()
 	c.logger.DebugContext(ctx, "downloading file", "url", fileURL, "path", localPath, "max_size", formatBytes(maxSize))
