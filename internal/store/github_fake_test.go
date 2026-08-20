@@ -199,6 +199,39 @@ func (f *fakeGitHub) filesAt(branch string) map[string]string {
 	return out
 }
 
+// subtreeSHA returns the tree sha of a directory on a branch, walking the
+// nested trees exactly as the store does.
+func (f *fakeGitHub) subtreeSHA(branch, dir string) string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	commitSHA, ok := f.refs[branch]
+	if !ok {
+		return ""
+	}
+
+	current := f.trees4[commitSHA]
+	if dir == "" {
+		return current
+	}
+
+	for segment := range strings.SplitSeq(dir, "/") {
+		next := ""
+		for _, entry := range f.trees[current] {
+			if entry.Path == segment && entry.Type == gitHubTypeTree {
+				next = entry.SHA
+				break
+			}
+		}
+		if next == "" {
+			return ""
+		}
+		current = next
+	}
+
+	return current
+}
+
 // recorded returns a copy of the recorded requests.
 func (f *fakeGitHub) recorded() []recordedRequest {
 	f.mu.Lock()

@@ -85,6 +85,16 @@ concurrent writer's commit.
 `Push` is a no-op (a committed transaction is already on the remote) and `Pull`
 refreshes the cached HEAD.
 
+**Failures are loud, never silent.** A deletion is dropped from the tree only
+when the path is *genuinely* absent from the base tree. If the lookup that
+decides this cannot be completed — an unlistable tree, a transport failure — the
+whole commit fails instead. A backup must never publish a tree it presents as
+complete while quietly keeping a file that was asked to be deleted. For the same
+reason a tree that cannot be listed surfaces as an error on `Read` and `Exists`
+rather than as "not found": every tree SHA the backend requests came from a
+commit object or a parent tree entry, so a missing one is an API anomaly, not an
+empty directory.
+
 ## Rate limits
 
 The authenticated core limit is 5,000 requests/hour. `X-RateLimit-Remaining`

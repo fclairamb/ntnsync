@@ -362,8 +362,13 @@ func (t *githubTransaction) commitOnce(
 // buildTreeEntries converts the buffered change set into tree entries.
 //
 // Deletions are emitted as entries with a null sha. A deletion of a path that
-// is not present in the base tree is dropped: GitHub rejects the whole tree
-// creation otherwise.
+// is genuinely absent from the base tree is dropped, because GitHub rejects the
+// whole tree creation otherwise.
+//
+// "Genuinely absent" is load-bearing: a failed lookup must never be mistaken
+// for an absent path. If resolving a deletion target errors, the whole commit
+// fails, so a file that should leave the backup can never silently survive in a
+// tree we published as complete.
 func (t *githubTransaction) buildTreeEntries(
 	ctx context.Context, pending map[string]*githubChange, blobs map[string]string,
 ) ([]gitHubTreeRequestEntry, error) {
@@ -383,7 +388,9 @@ func (t *githubTransaction) buildTreeEntries(
 
 		existing, found, err := t.store.resolveEntry(ctx, path)
 		if err != nil {
-			return nil, err
+			// Fail the commit rather than publish a tree that quietly keeps a
+			// file the caller asked to delete.
+			return nil, fmt.Errorf("resolve deletion target %s: %w", path, err)
 		}
 		if !found || existing.Type != gitHubTypeBlob {
 			continue

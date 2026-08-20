@@ -6,7 +6,6 @@ import (
 	"io/fs"
 	"log/slog"
 	"maps"
-	"net/http"
 	"slices"
 	"strings"
 	"sync"
@@ -378,6 +377,15 @@ func findTreeEntry(entries []gitHubTreeEntry, name string) (gitHubTreeEntry, boo
 }
 
 // treeEntries returns the entries of one tree, from cache when possible.
+//
+// Every SHA reaching this function came from a commit object (via
+// getCommitTree) or from an entry of a parent tree that was just listed, and
+// both callers short-circuit before this point when the branch has no commits
+// at all. A missing tree is therefore an API anomaly, never a normal state, and
+// the error is propagated rather than reported as "empty directory": swallowing
+// it would make Read report not-found, Exists report false, and — worst — the
+// commit-time deletion filter conclude a path is absent and silently drop a
+// legitimate deletion from the backup.
 func (s *GitHubStore) treeEntries(ctx context.Context, treeSHA string) ([]gitHubTreeEntry, error) {
 	if cached, ok := s.treeCache.Get(treeSHA); ok {
 		return cached, nil
@@ -385,10 +393,7 @@ func (s *GitHubStore) treeEntries(ctx context.Context, treeSHA string) ([]gitHub
 
 	entries, err := s.api.getTree(ctx, treeSHA)
 	if err != nil {
-		if isGitHubStatus(err, http.StatusNotFound) {
-			return nil, nil
-		}
-		return nil, err
+		return nil, fmt.Errorf("list tree %s: %w", treeSHA, err)
 	}
 
 	s.treeCache.Put(treeSHA, entries)

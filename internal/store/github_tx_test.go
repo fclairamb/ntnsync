@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"strings"
 	"testing"
@@ -559,5 +560,94 @@ func TestGitHubTransactionBufferBudgetIsEnforced(t *testing.T) {
 	err = tx.Write(ctx, "big.bin", oversized)
 	if !errors.Is(err, apperrors.ErrGitHubBufferFull) {
 		t.Fatalf("expected ErrGitHubBufferFull once base64 inflation is accounted for, got %v", err)
+	}
+}
+
+// TestGitHubDeletionSurvivesNoTreeLookupFailure is the data-safety guard for a
+// backup tool: if the tree listing that decides whether a deletion target
+// exists fails, the commit must fail loudly. It must never publish a tree that
+// silently keeps a file the caller asked to delete.
+func TestGitHubDeletionSurvivesNoTreeLookupFailure(t *testing.T) {
+	t.Parallel()
+
+	fake, storeInst := seededStore(t, map[string]string{
+		"tech/a.md": "A",
+		"tech/b.md": "B",
+	})
+	ctx := context.Background()
+
+	// A 404 on the *nested* tech tree is an API anomaly, not an empty
+	// directory. Scripting it by sha leaves the root tree fetch untouched.
+	techTree := fake.subtreeSHA("main", "tech")
+	if techTree == "" {
+		t.Fatal("fixture must contain a tech subtree")
+	}
+
+	fake.script("GET /git/trees/"+techTree, scriptedResponse{
+		status: http.StatusNotFound,
+		body:   `{"message":"Not Found"}`,
+	})
+
+	tx, err := storeInst.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if delErr := tx.Delete(ctx, "tech/a.md"); delErr != nil {
+		t.Fatalf("delete: %v", delErr)
+	}
+
+	err = tx.Commit(ctx, "drop a")
+	if err == nil {
+		t.Fatal("a failed deletion-target lookup must fail the commit, not drop the deletion")
+	}
+	if !strings.Contains(err.Error(), "tech/a.md") {
+		t.Fatalf("the error must name the deletion target, got %q", err)
+	}
+
+	if got := len(requestsOfKind(fake, http.MethodPost, "/git/trees")); got != 0 {
+		t.Fatalf("no tree may be published when a deletion could not be resolved, got %d tree POSTs", got)
+	}
+	if got := len(requestsOfKind(fake, http.MethodPatch, "/git/refs/heads/")); got != 0 {
+		t.Fatalf("the branch must not move, got %d ref updates", got)
+	}
+
+	// The buffered deletion is still pending, so a later retry can apply it.
+	exists, existsErr := storeInst.Exists(ctx, "tech/a.md")
+	if existsErr != nil {
+		t.Fatalf("exists: %v", existsErr)
+	}
+	if exists {
+		t.Fatal("the deletion must remain buffered after a failed commit")
+	}
+}
+
+// TestGitHubMissingNestedTreeSurfacesAsAnError covers the read side of the same
+// anomaly: a nested tree that cannot be listed is an error, not "not found".
+func TestGitHubMissingNestedTreeSurfacesAsAnError(t *testing.T) {
+	t.Parallel()
+
+	fake, storeInst := seededStore(t, map[string]string{"tech/a.md": "A"})
+	ctx := context.Background()
+
+	techTree := fake.subtreeSHA("main", "tech")
+
+	fake.script("GET /git/trees/"+techTree, scriptedResponse{
+		status: http.StatusNotFound,
+		body:   `{"message":"Not Found"}`,
+	})
+
+	if _, err := storeInst.Read(ctx, "tech/a.md"); err == nil {
+		t.Fatal("an unlistable nested tree must surface as an error, not a missing file")
+	} else if errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("an API anomaly must not masquerade as fs.ErrNotExist: %v", err)
+	}
+
+	fake.script("GET /git/trees/"+techTree, scriptedResponse{
+		status: http.StatusNotFound,
+		body:   `{"message":"Not Found"}`,
+	})
+
+	if _, err := storeInst.Exists(ctx, "tech/a.md"); err == nil {
+		t.Fatal("Exists must report the anomaly rather than answering false")
 	}
 }
