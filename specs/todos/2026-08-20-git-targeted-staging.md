@@ -85,3 +85,34 @@ Reference repository, 20 changed files:
   - more than the threshold number of paths -> still commits correctly (fallback path)
 - Existing store tests continue to pass unchanged.
 - `go build ./...`, `golangci-lint run ./...` and `go test ./...` all pass.
+
+## Implementation Plan
+
+1. **Targeted staging helper** — add `stageModifiedPaths` on `localTransaction`:
+   iterate `modifiedPaths`, `os.Lstat` the on-disk path to classify add vs delete,
+   then `worktree.AddWithOptions(&git.AddOptions{Path: p, SkipStatus: true})` for
+   existing files and `worktree.Remove(p)` for missing ones. Tolerate
+   `index.ErrEntryNotFound` from `Remove` (write-then-delete inside one transaction).
+   Convert keys with `filepath.ToSlash` for go-git and `filepath.FromSlash` +
+   `filepath.Join(rootPath, ...)` for the `Lstat`.
+
+2. **Change detection without `Status()`** — add `stagedPathsDiffer`, comparing, for
+   each tracked path, the index entry hash against the HEAD tree entry hash
+   (`repo.Storer.Index()` vs `HEAD` commit tree `FindEntry`). Presence mismatch or
+   hash mismatch means a real change; identical means the path was touched but its
+   content matches HEAD, so no empty commit is produced. A repository with no HEAD
+   (no commit yet) treats any index entry as a change.
+
+3. **Threshold fallback** — package const `maxTargetedStagingPaths = 500`. When
+   `len(modifiedPaths)` exceeds it, keep the existing `AddWithOptions{All: true}` +
+   `Status()` scan, extracted into its own helper so `Commit` stays under the
+   `funlen` budget.
+
+4. **Wire into `Commit`** — keep the `t.mu` then `t.store.mu` lock order and the
+   existing "nothing to commit -> clear `modifiedPaths`, return nil" behaviour.
+
+5. **Tests** in `internal/store/targeted_staging_test.go` covering the six spec
+   scenarios plus a `filepath.ToSlash`/nested-directory case, using a temporary
+   `NewLocalStore` and reading back the HEAD tree to assert.
+
+6. **QA** — `go build ./...`, `golangci-lint run ./...`, `go test ./...`.
