@@ -57,7 +57,7 @@ type ReadFSProvider interface {
 	FS() fs.FS
 }
 
-// RemoteStore is a Store that can synchronise with a remote repository.
+// RemoteStore is a Store that can synchronize with a remote repository.
 // Every concrete store in this package implements it, which is what lets
 // callers avoid type-switching on concrete store types.
 type RemoteStore interface {

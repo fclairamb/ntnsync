@@ -24,6 +24,13 @@ const gitRemoteOrigin = "origin"
 // defaultBranch is the branch name used when NTN_GIT_BRANCH is not set.
 const defaultBranch = "main"
 
+// defaultCommitUser and defaultCommitEmail are the commit identity used when
+// NTN_GIT_USER / NTN_GIT_EMAIL are not set.
+const (
+	defaultCommitUser  = "ntnsync"
+	defaultCommitEmail = "ntnsync@local"
+)
+
 // defaultGitDepth is the default shallow-clone/fetch depth (NTN_GIT_DEPTH).
 // Nothing in ntnsync reads git history, so shallow clones are the default;
 // set NTN_GIT_DEPTH=0 to opt out and use full history.
@@ -83,10 +90,10 @@ func LoadRemoteConfigFromEnv() *RemoteConfig {
 		cfg.Branch = defaultBranch
 	}
 	if cfg.User == "" {
-		cfg.User = "ntnsync"
+		cfg.User = defaultCommitUser
 	}
 	if cfg.Email == "" {
-		cfg.Email = "ntnsync@local"
+		cfg.Email = defaultCommitEmail
 	}
 
 	// Parse NTN_COMMIT_PERIOD (implicitly enables commit if set)
@@ -245,11 +252,11 @@ func splitGitURL(rawURL string) (host, path string, err error) { //nolint:noname
 		// scp-style: [user@]host:path
 		at := strings.LastIndex(rawURL, "@")
 		remainder := rawURL[at+1:]
-		colon := strings.Index(remainder, ":")
-		if colon < 0 {
+		hostPart, pathPart, found := strings.Cut(remainder, ":")
+		if !found {
 			return "", "", fmt.Errorf("%w: %s", apperrors.ErrNotGitHubURL, rawURL)
 		}
-		return remainder[:colon], remainder[colon+1:], nil
+		return hostPart, pathPart, nil
 	}
 
 	parsed, err := url.Parse(rawURL)

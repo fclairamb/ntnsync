@@ -60,6 +60,9 @@ const (
 	gitHubTypeBlob = "blob"
 	gitHubTypeTree = "tree"
 
+	// gitHubEncodingBase64 is the only blob encoding we send or accept.
+	gitHubEncodingBase64 = "base64"
+
 	// httpStatusServerErrorFloor is the lowest 5xx status code.
 	httpStatusServerErrorFloor = 500
 )
@@ -88,11 +91,11 @@ func isGitHubStatus(err error, status int) bool {
 	return apiErr.StatusCode == status
 }
 
-// sleepFunc pauses for the given duration or until the context is cancelled.
+// sleepFunc pauses for the given duration or until the context is canceled.
 // It is a field so tests can observe waits without real time passing.
 type sleepFunc func(ctx context.Context, d time.Duration) error
 
-// realSleep waits for d, honouring context cancellation.
+// realSleep waits for d, honoring context cancellation.
 func realSleep(ctx context.Context, d time.Duration) error {
 	if d <= 0 {
 		return nil
@@ -202,7 +205,7 @@ func (a *githubAPI) rateSnapshot() rateBudget {
 
 // observeRate records the rate-limit headers of a response.
 func (a *githubAPI) observeRate(header http.Header) rateBudget {
-	remainingStr := header.Get("X-RateLimit-Remaining")
+	remainingStr := header.Get("X-Ratelimit-Remaining")
 	if remainingStr == "" {
 		return a.rateSnapshot()
 	}
@@ -213,10 +216,10 @@ func (a *githubAPI) observeRate(header http.Header) rateBudget {
 	}
 
 	budget := rateBudget{Remaining: remaining, Known: true}
-	if limit, convErr := strconv.Atoi(header.Get("X-RateLimit-Limit")); convErr == nil {
+	if limit, convErr := strconv.Atoi(header.Get("X-Ratelimit-Limit")); convErr == nil {
 		budget.Limit = limit
 	}
-	if reset, convErr := strconv.ParseInt(header.Get("X-RateLimit-Reset"), 10, 64); convErr == nil {
+	if reset, convErr := strconv.ParseInt(header.Get("X-Ratelimit-Reset"), 10, 64); convErr == nil {
 		budget.Reset = time.Unix(reset, 0)
 	}
 
@@ -225,6 +228,14 @@ func (a *githubAPI) observeRate(header http.Header) rateBudget {
 	a.mu.Unlock()
 
 	return budget
+}
+
+// clearBudget forgets the observed rate-limit window.
+func (a *githubAPI) clearBudget() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	a.rate.Known = false
 }
 
 // waitForBudget blocks while the remaining request budget is at or below the
@@ -336,6 +347,10 @@ func (a *githubAPI) retryDelay(err error, backoff time.Duration) (time.Duration,
 	switch {
 	case apiErr.StatusCode == http.StatusTooManyRequests,
 		apiErr.StatusCode == http.StatusForbidden && apiErr.Remaining == 0:
+		// The wait below already covers this window, so drop the observed
+		// budget to avoid waiting for the same reset twice.
+		a.clearBudget()
+
 		wait := apiErr.Reset.Sub(a.now())
 		if wait <= 0 {
 			wait = backoff
@@ -364,7 +379,7 @@ func (a *githubAPI) attempt(ctx context.Context, method, path string, payload []
 	}
 
 	req.Header.Set("Accept", gitHubAcceptJSON)
-	req.Header.Set("X-GitHub-Api-Version", gitHubAPIVersion)
+	req.Header.Set("X-Github-Api-Version", gitHubAPIVersion)
 	req.Header.Set("User-Agent", "ntnsync")
 	if a.token != "" {
 		req.Header.Set("Authorization", "Bearer "+a.token)
@@ -478,7 +493,9 @@ type gitHubAuthor struct {
 
 // getRef reads the commit SHA a branch points at. found is false when the
 // branch does not exist yet (a fresh repository or a new queue branch).
-func (a *githubAPI) getRef(ctx context.Context, branch string) (sha string, found bool, err error) { //nolint:nonamedreturns // named for documentation
+//
+//nolint:nonamedreturns // named for documentation
+func (a *githubAPI) getRef(ctx context.Context, branch string) (sha string, found bool, err error) {
 	var out gitHubRefResponse
 
 	path := a.repoPath("/git/ref/heads/" + url.PathEscape(branch))
@@ -533,7 +550,7 @@ func (a *githubAPI) getBlob(ctx context.Context, blobSHA string) ([]byte, error)
 		return nil, err
 	}
 
-	if out.Encoding != "" && out.Encoding != "base64" {
+	if out.Encoding != "" && out.Encoding != gitHubEncodingBase64 {
 		return nil, fmt.Errorf("%w: %s", apperrors.ErrGitHubUnsupportedBlobEncoding, out.Encoding)
 	}
 
@@ -555,7 +572,7 @@ func (a *githubAPI) createBlob(ctx context.Context, content []byte) (string, err
 		Encoding string `json:"encoding"`
 	}{
 		Content:  base64.StdEncoding.EncodeToString(content),
-		Encoding: "base64",
+		Encoding: gitHubEncodingBase64,
 	}
 
 	var out gitHubBlobResponse

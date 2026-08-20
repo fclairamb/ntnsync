@@ -39,16 +39,16 @@ func (c *lruCache[V]) Get(key string) (V, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	elem, ok := c.items[key]
-	if !ok {
+	elem, found := c.items[key]
+	if !found {
 		var zero V
 		return zero, false
 	}
 
 	c.order.MoveToFront(elem)
 
-	entry, ok := elem.Value.(*lruEntry[V])
-	if !ok {
+	entry, isEntry := elem.Value.(*lruEntry[V])
+	if !isEntry {
 		var zero V
 		return zero, false
 	}
@@ -61,7 +61,7 @@ func (c *lruCache[V]) Put(key string, value V) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if elem, ok := c.items[key]; ok {
+	if elem, found := c.items[key]; found {
 		c.order.MoveToFront(elem)
 		if entry, isEntry := elem.Value.(*lruEntry[V]); isEntry {
 			entry.value = value

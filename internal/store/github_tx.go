@@ -404,8 +404,8 @@ func (t *githubTransaction) buildTreeEntries(
 func (t *githubTransaction) author() gitHubAuthor {
 	cfg := t.store.cfg
 
-	name := "ntnsync"
-	email := "ntnsync@local"
+	name := defaultCommitUser
+	email := defaultCommitEmail
 	if cfg != nil && cfg.User != "" {
 		name = cfg.User
 	}

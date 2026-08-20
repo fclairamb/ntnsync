@@ -137,7 +137,7 @@ func normalizeStorePath(raw string) string {
 	cleaned := strings.ReplaceAll(strings.TrimSpace(raw), "\\", "/")
 
 	segments := make([]string, 0, strings.Count(cleaned, "/")+1)
-	for _, segment := range strings.Split(cleaned, "/") {
+	for segment := range strings.SplitSeq(cleaned, "/") {
 		if segment == "" || segment == "." {
 			continue
 		}
@@ -227,12 +227,12 @@ func (s *GitHubStore) List(ctx context.Context, dir string) ([]FileInfo, error) 
 	}
 
 	files := make(map[string]FileInfo, len(entries))
-	for _, entry := range entries {
-		fullPath := joinStorePath(clean, entry.Path)
+	for idx := range entries {
+		fullPath := joinStorePath(clean, entries[idx].Path)
 		files[fullPath] = FileInfo{
 			Path:  fullPath,
-			IsDir: entry.Type == gitHubTypeTree,
-			Size:  entry.Size,
+			IsDir: entries[idx].Type == gitHubTypeTree,
+			Size:  entries[idx].Size,
 		}
 	}
 
@@ -283,7 +283,8 @@ func (s *GitHubStore) applyPendingToListing(clean string, files map[string]FileI
 		prefix = clean + "/"
 	}
 
-	for path, change := range s.pendingChanges() {
+	pending := s.pendingChanges()
+	for _, path := range slices.Sorted(maps.Keys(pending)) {
 		if !strings.HasPrefix(path, prefix) {
 			continue
 		}
@@ -293,21 +294,23 @@ func (s *GitHubStore) applyPendingToListing(clean string, files map[string]FileI
 			continue
 		}
 
-		if idx := strings.IndexByte(remainder, '/'); idx >= 0 {
+		deleted := pending[path].deleted
+
+		if child, _, nested := strings.Cut(remainder, "/"); nested {
 			// The change is nested deeper; it implies the intermediate dir.
-			if !change.deleted {
-				dirPath := joinStorePath(clean, remainder[:idx])
+			if !deleted {
+				dirPath := joinStorePath(clean, child)
 				files[dirPath] = FileInfo{Path: dirPath, IsDir: true}
 			}
 			continue
 		}
 
-		if change.deleted {
+		if deleted {
 			delete(files, path)
 			continue
 		}
 
-		files[path] = FileInfo{Path: path, Size: int64(len(change.content))}
+		files[path] = FileInfo{Path: path, Size: int64(len(pending[path].content))}
 	}
 }
 
@@ -366,9 +369,9 @@ func (s *GitHubStore) resolveEntry(ctx context.Context, clean string) (gitHubTre
 
 // findTreeEntry looks a name up in a tree listing.
 func findTreeEntry(entries []gitHubTreeEntry, name string) (gitHubTreeEntry, bool) {
-	for _, entry := range entries {
-		if entry.Path == name {
-			return entry, true
+	for idx := range entries {
+		if entries[idx].Path == name {
+			return entries[idx], true
 		}
 	}
 	return gitHubTreeEntry{}, false
@@ -540,30 +543,30 @@ func (s *GitHubStore) TestConnection(ctx context.Context) error {
 
 // trackTx prunes transactions with nothing buffered and registers tx so its
 // pending writes become visible to reads.
-func (s *GitHubStore) trackTx(tx *githubTransaction) {
+func (s *GitHubStore) trackTx(target *githubTransaction) {
 	s.txMu.Lock()
 	defer s.txMu.Unlock()
 
 	live := s.openTxs[:0]
 	for _, open := range s.openTxs {
-		if open == tx || open.hasPending() {
+		if open == target || open.hasPending() {
 			live = append(live, open)
 		}
 	}
 	s.openTxs = live
 
-	if !slices.Contains(s.openTxs, tx) {
-		s.openTxs = append(s.openTxs, tx)
+	if !slices.Contains(s.openTxs, target) {
+		s.openTxs = append(s.openTxs, target)
 	}
 }
 
 // untrackTx removes a transaction from the pending-read overlay.
-func (s *GitHubStore) untrackTx(tx *githubTransaction) {
+func (s *GitHubStore) untrackTx(target *githubTransaction) {
 	s.txMu.Lock()
 	defer s.txMu.Unlock()
 
 	s.openTxs = slices.DeleteFunc(s.openTxs, func(open *githubTransaction) bool {
-		return open == tx
+		return open == target
 	})
 }
 
@@ -574,8 +577,8 @@ func (s *GitHubStore) pendingChange(clean string) (githubChange, bool) {
 	transactions := slices.Clone(s.openTxs)
 	s.txMu.Unlock()
 
-	for idx := len(transactions) - 1; idx >= 0; idx-- {
-		if change, found := transactions[idx].change(clean); found {
+	for _, open := range slices.Backward(transactions) {
+		if change, found := open.change(clean); found {
 			return change, true
 		}
 	}
@@ -591,10 +594,8 @@ func (s *GitHubStore) pendingChanges() map[string]githubChange {
 	s.txMu.Unlock()
 
 	merged := make(map[string]githubChange)
-	for _, tx := range transactions {
-		for path, change := range tx.snapshot() {
-			merged[path] = change
-		}
+	for _, open := range transactions {
+		maps.Copy(merged, open.snapshot())
 	}
 
 	return merged

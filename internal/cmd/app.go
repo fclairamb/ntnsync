@@ -34,6 +34,12 @@ const (
 	// flagCompact is the reindex flag that migrates the registry index to its
 	// sharded layout.
 	flagCompact = "compact"
+
+	// cmdNameReindex is the reindex subcommand name, also used when reporting
+	// that a backend cannot serve it.
+	cmdNameReindex = "reindex"
+	// cmdNameStatus is the status subcommand name.
+	cmdNameStatus = "status"
 )
 
 var (
@@ -479,8 +485,8 @@ func listCommand() *cli.Command {
 			}
 
 			if tree {
-				if err := ensureWholeTreeSupported(storeInst, "list --tree"); err != nil {
-					return err
+				if treeErr := ensureWholeTreeSupported(storeInst, "list --tree"); treeErr != nil {
+					return treeErr
 				}
 			}
 
@@ -512,7 +518,7 @@ func listCommand() *cli.Command {
 // statusCommand creates the status subcommand.
 func statusCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "status",
+		Name:  cmdNameStatus,
 		Usage: "Show sync status and queue information",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -564,7 +570,7 @@ func statusCommand() *cli.Command {
 // reindexCommand creates the reindex subcommand.
 func reindexCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "reindex",
+		Name:  cmdNameReindex,
 		Usage: "Rebuild registry from markdown files",
 		Flags: []cli.Flag{
 			verboseFlag,
@@ -587,7 +593,7 @@ func reindexCommand() *cli.Command {
 				return err
 			}
 
-			if err := ensureWholeTreeSupported(storeInst, "reindex"); err != nil {
+			if err := ensureWholeTreeSupported(storeInst, cmdNameReindex); err != nil {
 				return err
 			}
 
@@ -636,8 +642,8 @@ func cleanupCommand() *cli.Command {
 				return err
 			}
 
-			if err := ensureWholeTreeSupported(storeInst, "cleanup"); err != nil {
-				return err
+			if unsupportedErr := ensureWholeTreeSupported(storeInst, "cleanup"); unsupportedErr != nil {
+				return unsupportedErr
 			}
 
 			// Create crawler (no client needed for cleanup)
