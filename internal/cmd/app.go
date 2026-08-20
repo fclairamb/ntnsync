@@ -30,6 +30,10 @@ const (
 	flagFolder = "folder"
 	// flagDryRun is the shared flag name for dry-run mode.
 	flagDryRun = "dry-run"
+
+	// flagCompact is the reindex flag that migrates the registry index to its
+	// sharded layout.
+	flagCompact = "compact"
 )
 
 var (
@@ -559,6 +563,10 @@ func reindexCommand() *cli.Command {
 				Name:  flagDryRun,
 				Usage: "Show what would be done without making changes",
 			},
+			&cli.BoolFlag{
+				Name:  flagCompact,
+				Usage: "Migrate the legacy per-page registry files into the sharded index",
+			},
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
 			setupLogging(cmd)
@@ -572,6 +580,14 @@ func reindexCommand() *cli.Command {
 
 			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 			dryRun := cmd.Bool(flagDryRun)
+
+			if cmd.Bool(flagCompact) {
+				if err := crawler.Compact(ctx, dryRun); err != nil {
+					return fmt.Errorf("reindex --compact: %w", err)
+				}
+
+				return nil
+			}
 
 			if err := crawler.Reindex(ctx, dryRun); err != nil {
 				return fmt.Errorf("reindex: %w", err)
@@ -720,6 +736,12 @@ func serveCommand() *cli.Command {
 				Value:   0,
 				Sources: cli.EnvVars("NTN_WEBHOOK_SYNC_DELAY"),
 			},
+			&cli.BoolFlag{
+				Name:    "pprof",
+				Usage:   "Expose net/http/pprof profiling endpoints under /debug/pprof",
+				Value:   false,
+				Sources: cli.EnvVars("NTN_PPROF"),
+			},
 			verboseFlag,
 		},
 		Before: func(ctx context.Context, cmd *cli.Command) (context.Context, error) {
@@ -749,6 +771,7 @@ func serveCommand() *cli.Command {
 				Secret:    secret,
 				AutoSync:  cmd.Bool("auto-sync"),
 				SyncDelay: cmd.Duration("sync-delay"),
+				Pprof:     cmd.Bool("pprof"),
 			}
 
 			// Create sync worker if NOTION_TOKEN is available
@@ -863,6 +886,7 @@ func createStore(cmd *cli.Command) (store.Store, *store.RemoteConfig, error) {
 			Commit:       remoteConfig.Commit,
 			CommitPeriod: remoteConfig.CommitPeriod,
 			Push:         remoteConfig.Push,
+			Depth:        remoteConfig.Depth,
 		}
 
 		queueStore, err := store.NewLocalStore(queuePath,

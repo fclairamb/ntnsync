@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,14 @@ import (
 
 // gitRemoteOrigin is the conventional git remote name for the primary remote.
 const gitRemoteOrigin = "origin"
+
+// defaultBranch is the branch name used when NTN_GIT_BRANCH is not set.
+const defaultBranch = "main"
+
+// defaultGitDepth is the default shallow-clone/fetch depth (NTN_GIT_DEPTH).
+// Nothing in ntnsync reads git history, so shallow clones are the default;
+// set NTN_GIT_DEPTH=0 to opt out and use full history.
+const defaultGitDepth = 1
 
 // StorageMode defines the storage mode for git operations.
 type StorageMode string
@@ -43,6 +52,7 @@ type RemoteConfig struct {
 	Commit       bool          // Enable automatic git commit (NTN_COMMIT)
 	CommitPeriod time.Duration // Periodic commit interval during sync (NTN_COMMIT_PERIOD)
 	Push         *bool         // Push to remote after commits (NTN_PUSH), nil means auto-detect
+	Depth        int           // Shallow clone/fetch depth (NTN_GIT_DEPTH), 0 = full history
 }
 
 // LoadRemoteConfigFromEnv loads remote configuration from environment variables.
@@ -55,11 +65,12 @@ func LoadRemoteConfigFromEnv() *RemoteConfig {
 		QueueBranch: os.Getenv("NTN_QUEUE_BRANCH"),
 		User:        os.Getenv("NTN_GIT_USER"),
 		Email:       os.Getenv("NTN_GIT_EMAIL"),
+		Depth:       parseDepthEnv(os.Getenv("NTN_GIT_DEPTH")),
 	}
 
 	// Apply defaults
 	if cfg.Branch == "" {
-		cfg.Branch = "main"
+		cfg.Branch = defaultBranch
 	}
 	if cfg.User == "" {
 		cfg.User = "ntnsync"
@@ -104,6 +115,20 @@ func LoadRemoteConfigFromEnv() *RemoteConfig {
 func parseBoolEnv(val string) bool {
 	val = strings.ToLower(val)
 	return val == "true" || val == "1" || val == "yes"
+}
+
+// parseDepthEnv parses the NTN_GIT_DEPTH environment variable value.
+// An unset, empty, negative, or malformed value falls back to defaultGitDepth.
+// "0" is a valid, explicit opt-out meaning full history.
+func parseDepthEnv(val string) int {
+	if val == "" {
+		return defaultGitDepth
+	}
+	d, err := strconv.Atoi(val)
+	if err != nil || d < 0 {
+		return defaultGitDepth
+	}
+	return d
 }
 
 // EffectiveStorageMode returns the effective storage mode after auto-detection.

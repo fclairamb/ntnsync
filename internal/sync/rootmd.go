@@ -178,6 +178,10 @@ func (c *Crawler) ReconcileRootMd(ctx context.Context) error {
 	// Queue enabled root pages that need initial sync
 	queuedCount := c.queueRootPages(ctx, pagesToQueue)
 
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
+	}
+
 	c.logger.InfoContext(ctx, "root.md reconciliation complete",
 		"entries", len(cleaned),
 		"queued_for_sync", queuedCount)

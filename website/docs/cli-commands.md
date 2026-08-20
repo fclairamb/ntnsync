@@ -45,7 +45,7 @@ NTN_LOG_FORMAT=json ./ntnsync sync -v
 |----------|---------|-------------|
 | `NTN_BLOCK_DEPTH` | `0` | Maximum depth for block discovery (0 = unlimited) |
 | `NTN_QUEUE_DELAY` | `0` | Delay between processing queue files (e.g., `5s`, `1m`) |
-| `NTN_MAX_FILE_SIZE` | `5MB` | Maximum file size to download |
+| `NTN_MAX_FILE_SIZE` | `512KB` | Maximum file size to download |
 
 **`NTN_BLOCK_DEPTH`**: Limits how deeply nested blocks are fetched.
 - `0` (default): Fetch all nested blocks (unlimited depth)
@@ -302,16 +302,18 @@ Rebuild registry files from markdown files.
 
 ```bash
 ntnsync reindex [--dry-run]
+ntnsync reindex --compact [--dry-run]   # one-shot migration to the sharded index
 ```
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--dry-run` | false | Preview changes without modifying |
+| `--compact` | false | Migrate legacy per-record registry files into the sharded index |
 
 **Behavior**:
 - Scans all markdown files recursively
 - Parses frontmatter for metadata
-- Rebuilds `.notion-sync/ids/page-{id}.json` registries
+- Rebuilds the page registries in `.notion-sync/ids/page/{shard}.jsonl`
 - Handles duplicates by keeping latest `last_edited`
 - Deletes older duplicate files
 - Normalizes page IDs
@@ -320,6 +322,18 @@ ntnsync reindex [--dry-run]
 - Recover from deleted registry files
 - Fix corrupted registry data
 - Clean up duplicate pages
+
+#### reindex --compact
+
+One-shot migration of a repository still using the old layout (one JSON file per
+page, file and user in a single flat `.notion-sync/ids/` directory) to the
+sharded index. It reads every `page-*.json`, `file-*.json`, `user-*.json` (and
+the oldest `{id}.json` form), writes the shards, deletes the legacy files and
+commits — all in a single commit.
+
+Safe to run at any time: readers keep resolving the legacy locations until the
+migration commit lands, and running it again on an already-compact repository
+does nothing.
 - Rebuild after manual file edits
 
 ### remote
@@ -349,6 +363,18 @@ ntnsync remote test
 | `NTN_GIT_USER` | Git commit author name (default: `ntnsync`) |
 | `NTN_GIT_EMAIL` | Git commit author email (default: `ntnsync@localhost`) |
 | `NTN_STORAGE` | Storage mode: `local` or `remote` (auto-detected from `NTN_GIT_URL`) |
+| `NTN_GIT_DEPTH` | Shallow clone/fetch depth (default: `1`). `0` fetches full history |
+
+**`NTN_GIT_DEPTH`**: Controls how much git history is cloned and kept in sync.
+- `1` (default): Shallow clone/fetch — only the latest commit. ntnsync never
+  reads history, so this significantly reduces clone time and memory usage on
+  large repositories.
+- `0`: Full history (opt-out of shallow cloning).
+- Any other positive integer: Keep that many commits of history.
+- Applies to the initial clone and to subsequent pulls/fetches, including the
+  queue branch clone when `NTN_QUEUE_BRANCH` is set.
+- An unset or malformed value falls back to the default (`1`) rather than
+  failing startup.
 
 **`NTN_QUEUE_BRANCH`**: When set, the rapidly-churning sync queue (`.notion-sync/queue`)
 is committed to a separate branch instead of the main branch. Page content,

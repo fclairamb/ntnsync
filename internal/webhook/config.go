@@ -20,6 +20,7 @@ type ServerConfig struct {
 	Secret    string        // Webhook secret for signature verification (NTN_WEBHOOK_SECRET, optional)
 	AutoSync  bool          // Automatically run sync after queuing webhook events (NTN_WEBHOOK_AUTO_SYNC, default true)
 	SyncDelay time.Duration // Delay before processing queue (NTN_WEBHOOK_SYNC_DELAY, default 0)
+	Pprof     bool          // Expose net/http/pprof under /debug/pprof (NTN_PPROF, default false)
 }
 
 // LoadConfigFromEnv loads webhook configuration from environment variables.
@@ -43,6 +44,10 @@ func LoadConfigFromEnv() *ServerConfig {
 
 	if autoSyncStr := os.Getenv("NTN_WEBHOOK_AUTO_SYNC"); autoSyncStr != "" {
 		cfg.AutoSync = parseBoolEnv(autoSyncStr)
+	}
+
+	if pprofStr := os.Getenv("NTN_PPROF"); pprofStr != "" {
+		cfg.Pprof = parseBoolEnv(pprofStr)
 	}
 
 	if syncDelayStr := os.Getenv("NTN_WEBHOOK_SYNC_DELAY"); syncDelayStr != "" {

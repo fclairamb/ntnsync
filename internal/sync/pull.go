@@ -241,6 +241,10 @@ func (c *Crawler) Pull(ctx context.Context, opts PullOptions) (*PullResult, erro
 		}
 	}
 
+	if err := c.FlushRegistries(ctx); err != nil {
+		return nil, fmt.Errorf("flush registries: %w", err)
+	}
+
 	c.logger.InfoContext(ctx, "pull complete",
 		"pages_found", result.PagesFound,
 		"pages_queued", result.PagesQueued,

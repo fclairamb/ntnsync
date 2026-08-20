@@ -78,6 +78,9 @@ var (
 	// ErrTransactionCommitted is returned when attempting to use a transaction that has already been committed.
 	ErrTransactionCommitted = errors.New("transaction already committed")
 
+	// ErrRegistryNotFound is returned when a registry record is not present in the index.
+	ErrRegistryNotFound = errors.New("registry not found")
+
 	// ErrCycleDetected is returned when a cycle is detected in page hierarchy.
 	ErrCycleDetected = errors.New("cycle detected in page hierarchy")
 

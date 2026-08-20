@@ -120,6 +120,10 @@ func (c *Crawler) finalizeAdd(ctx context.Context, params *finalizeAddParams) er
 			"parent_id", params.itemID)
 	}
 
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
+	}
+
 	return nil
 }
 
@@ -307,6 +311,10 @@ func (c *Crawler) GetPage(ctx context.Context, pageID string, folder string) err
 		return fmt.Errorf("save page: %w", err)
 	}
 
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
+	}
+
 	// Save state
 	if err := c.saveState(ctx); err != nil {
 		return fmt.Errorf("save state: %w", err)
@@ -380,7 +388,7 @@ func (c *Crawler) traceParentChain(
 	// Use requested folder or default
 	targetFolder := requestedFolder
 	if targetFolder == "" {
-		targetFolder = "default"
+		targetFolder = defaultFolderName
 	}
 
 	c.logger.DebugContext(ctx, "reached workspace level",

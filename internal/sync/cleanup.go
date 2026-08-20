@@ -93,6 +93,10 @@ func (c *Crawler) Cleanup(ctx context.Context, dryRun bool) (*CleanupResult, err
 		}
 	}
 
+	if err := c.FlushRegistries(ctx); err != nil {
+		return nil, fmt.Errorf("flush registries: %w", err)
+	}
+
 	c.logger.InfoContext(ctx, "cleanup complete",
 		"orphaned_pages", result.OrphanedPages,
 		"deleted_registries", result.DeletedRegistries,
@@ -143,18 +147,6 @@ func (c *Crawler) deleteFile(ctx context.Context, filePath string) error {
 			return nil
 		}
 		return fmt.Errorf("delete file %s: %w", filePath, err)
-	}
-	return nil
-}
-
-// deletePageRegistry deletes a page registry file.
-func (c *Crawler) deletePageRegistry(ctx context.Context, pageID string) error {
-	path := fmt.Sprintf("%s/%s/page-%s.json", stateDir, idsDir, pageID)
-	if err := c.tx.Delete(ctx, path); err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("delete registry: %w", err)
 	}
 	return nil
 }

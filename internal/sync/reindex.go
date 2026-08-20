@@ -58,6 +58,10 @@ func (c *Crawler) Reindex(ctx context.Context, dryRun bool) error {
 		return err
 	}
 
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
+	}
+
 	// Delete duplicate files
 	if len(result.filesToDelete) > 0 {
 		if err := c.deleteDuplicateFiles(ctx, result.filesToDelete); err != nil {
@@ -333,18 +337,33 @@ func (c *Crawler) extractTitle(lines []string, endIdx int, filePath string, reg 
 	reg.Title = strings.TrimSuffix(base, ".md")
 }
 
-// CommitChanges commits pending changes to git.
+// CommitChanges flushes the buffered registry writes and commits pending
+// changes to git.
+//
+// It commits through the crawler's own transaction when there is one: that
+// transaction is what recorded the modified paths, and a freshly opened one
+// would have nothing staged.
 func (c *Crawler) CommitChanges(ctx context.Context, message string) error {
 	c.logger.InfoContext(ctx, "committing changes", "message", message)
 
-	tx, err := c.store.BeginTx(ctx)
-	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
 	}
 
-	if err := tx.Commit(ctx, message); err != nil {
+	// Without a transaction there is, by construction, nothing to commit: the
+	// store stages exactly the paths a transaction recorded, so a freshly opened
+	// one would stage nothing and produce no commit. Say so instead of going
+	// through the motions.
+	if c.tx == nil {
+		c.logger.DebugContext(ctx, "no transaction, nothing to commit")
+		return nil
+	}
+
+	if err := c.tx.Commit(ctx, message); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
+
+	c.invalidateRegistryCache()
 
 	c.logger.InfoContext(ctx, "changes committed")
 	return nil

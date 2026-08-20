@@ -194,6 +194,12 @@ func (c *Crawler) ProcessQueueWithCallback(
 		}
 	}
 
+	// Flush the buffered registry writes before the final state save, so a
+	// caller that commits right after picks them up.
+	if err := c.FlushRegistries(ctx); err != nil {
+		return fmt.Errorf("flush registries: %w", err)
+	}
+
 	// Final state save
 	if err := c.saveState(ctx); err != nil {
 		return fmt.Errorf("save state: %w", err)
@@ -735,17 +741,10 @@ func (c *Crawler) writeAndRegister(
 		c.logger.WarnContext(ctx, "failed to save page registry", "error", err)
 	}
 
-	// Self-heal: an earlier run may have stored this page under the legacy dashed
-	// ID form (page-{uuid-with-dashes}.json). Now that the canonical registry is
-	// saved, drop the stale dashed one so the page is not listed — and counted as
-	// a filename conflict — twice. Best-effort: deletePageRegistry ignores a
-	// missing file.
-	if dashedID := denormalizePageID(params.itemID); dashedID != params.itemID {
-		if err := c.deletePageRegistry(ctx, dashedID); err != nil {
-			c.logger.DebugContext(ctx, "could not remove legacy dashed registry",
-				logKey, params.itemID, "error", err)
-		}
-	}
+	// Self-heal: an earlier run may have stored this page under a legacy layout
+	// (page-{uuid-with-dashes}.json and friends). savePageRegistry queues every
+	// historical location for removal, so the page is not listed — and counted as
+	// a filename conflict — twice.
 
 	// Queue children if they don't exist yet
 	var newChildren []string
