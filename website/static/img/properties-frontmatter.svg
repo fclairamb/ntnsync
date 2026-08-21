@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 336" font-family="var(--ifm-font-family-base)">
+  <!-- column headers -->
+  <text x="20" y="24" font-size="11" letter-spacing="1.6" fill="var(--ntn-hosted)">IN NOTION</text>
+  <text x="450" y="24" font-size="11" letter-spacing="1.6" fill="var(--ntn-owned)">ON DISK</text>
+
+  <!-- left: the Notion property panel -->
+  <rect x="20" y="38" width="360" height="210" rx="9" fill="var(--ntn-hosted)" fill-opacity="0.07" stroke="var(--ntn-hosted)" stroke-width="1.5"/>
+  <text x="38" y="62" font-size="11" letter-spacing="1.4" fill="var(--ntn-hosted)">PROPERTIES</text>
+  <path d="M20 74 H380" stroke="var(--ntn-hosted)" stroke-width="1" stroke-opacity="0.5" fill="none"/>
+
+  <text x="38" y="100" font-size="12.5" fill="var(--ifm-color-emphasis-600)">Autoprod</text>
+  <rect x="196" y="89" width="13" height="13" rx="3" fill="none" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.3"/>
+  <text x="217" y="100" font-size="12.5" fill="var(--ifm-font-color-base)">unchecked</text>
+  <path d="M38 114 H362" stroke="var(--ifm-color-emphasis-300)" stroke-width="1" fill="none"/>
+
+  <text x="38" y="140" font-size="12.5" fill="var(--ifm-color-emphasis-600)">Component</text>
+  <text x="196" y="140" font-size="12.5" fill="var(--ifm-font-color-base)">client-platform</text>
+  <path d="M38 154 H362" stroke="var(--ifm-color-emphasis-300)" stroke-width="1" fill="none"/>
+
+  <text x="38" y="180" font-size="12.5" fill="var(--ifm-color-emphasis-600)">Issues</text>
+  <rect x="196" y="166" width="130" height="20" rx="10" fill="var(--ntn-hosted)" fill-opacity="0.18" stroke="var(--ntn-hosted)" stroke-width="1" stroke-opacity="0.6"/>
+  <text x="206" y="180" font-size="11.5" font-family="var(--ifm-font-family-monospace)" fill="var(--ifm-font-color-base)">37baa28b&#8230;</text>
+  <path d="M38 196 H362" stroke="var(--ifm-color-emphasis-300)" stroke-width="1" fill="none"/>
+
+  <text x="38" y="220" font-size="12.5" fill="var(--ifm-color-emphasis-600)">Last edited time</text>
+  <text x="196" y="220" font-size="12.5" fill="var(--ifm-font-color-base)">Aug 17, 2026 11:42 AM</text>
+
+  <!-- arrow -->
+  <path d="M386 143 H430" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.6" fill="none"/>
+  <path d="M430 136.5 L439 143 L430 149.5 Z" fill="var(--ifm-color-emphasis-600)"/>
+
+  <!-- right: the YAML frontmatter it becomes -->
+  <rect x="450" y="38" width="450" height="210" rx="9" fill="var(--ntn-owned)" fill-opacity="0.07" stroke="var(--ntn-owned)" stroke-width="1.5"/>
+  <rect x="458" y="146" width="434" height="54" rx="6" fill="var(--ntn-owned)" fill-opacity="0.16"/>
+
+  <text x="468" y="76" font-size="13" font-family="var(--ifm-font-family-monospace)" fill="var(--ifm-font-color-base)" font-weight="700">properties:</text>
+  <text x="484" y="104" font-size="13" font-family="var(--ifm-font-family-monospace)" fill="var(--ifm-font-color-base)"><tspan font-weight="700">Autoprod:</tspan><tspan fill="var(--ifm-color-emphasis-600)">&#160;false</tspan></text>
+  <text x="484" y="132" font-size="13" font-family="var(--ifm-font-family-monospace)" fill="var(--ifm-font-color-base)"><tspan font-weight="700">Component:</tspan><tspan fill="var(--ifm-color-emphasis-600)">&#160;"client-platform"</tspan></text>
+  <text x="484" y="160" font-size="13" font-family="var(--ifm-font-family-monospace)" font-weight="700" fill="var(--ntn-owned)">Issues:</text>
+  <text x="500" y="188" font-size="13" font-family="var(--ifm-font-family-monospace)" fill="var(--ntn-owned)">- "37baa28b-3ffb-8176-9788-c4d8af067810"</text>
+  <text x="484" y="216" font-size="13" font-family="var(--ifm-font-family-monospace)" fill="var(--ifm-font-color-base)"><tspan font-weight="700">Last edited time:</tspan><tspan fill="var(--ifm-color-emphasis-600)">&#160;"2026-08-17T11:42:00.000Z"</tspan></text>
+  <path d="M484 222 H616" stroke="var(--ntn-hosted)" stroke-width="1.4" fill="none"/>
+
+  <!-- notes -->
+  <rect x="20" y="279" width="10" height="10" rx="2" fill="var(--ntn-hosted)"/>
+  <text x="40" y="288" font-size="13.5" fill="var(--ifm-font-color-base)">Property names are copied&#160;<tspan font-weight="700">verbatim</tspan>&#160;&#8212; spaces and casing included (<tspan font-family="var(--ifm-font-family-monospace)">Last edited time</tspan>, never&#160;<tspan font-family="var(--ifm-font-family-monospace)">last_edited_time</tspan>).</text>
+  <rect x="20" y="309" width="10" height="10" rx="2" fill="var(--ntn-owned)"/>
+  <text x="40" y="318" font-size="13.5" fill="var(--ifm-font-color-base)">List-shaped values nest as a YAML sequence under their own key. Everything else stays flat.</text>
+</svg>

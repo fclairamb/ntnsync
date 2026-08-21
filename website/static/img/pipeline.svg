@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 236" font-family="var(--ifm-font-family-base)">
+  <!-- tags -->
+  <text x="90" y="30" text-anchor="middle" font-size="11" letter-spacing="1.6" fill="var(--ifm-color-emphasis-600)">HOSTED</text>
+  <text x="320" y="30" text-anchor="middle" font-size="11" letter-spacing="1.6" fill="var(--ifm-color-emphasis-600)">CONVERT</text>
+  <text x="550" y="30" text-anchor="middle" font-size="11" letter-spacing="1.6" fill="var(--ifm-color-emphasis-600)">YOURS</text>
+  <text x="780" y="30" text-anchor="middle" font-size="11" letter-spacing="1.6" fill="var(--ifm-color-emphasis-600)">FOREVER</text>
+
+  <!-- 1. Notion (hosted) -->
+  <rect x="2" y="44" width="176" height="96" rx="10" fill="var(--ntn-hosted)" fill-opacity="0.09" stroke="var(--ntn-hosted)" stroke-width="1.5"/>
+  <text x="90" y="79" text-anchor="middle" font-size="19" font-weight="700" fill="var(--ntn-hosted)">Notion</text>
+  <text x="90" y="103" text-anchor="middle" font-size="12.5" fill="var(--ifm-font-color-base)">pages · databases</text>
+  <text x="90" y="123" text-anchor="middle" font-size="12.5" fill="var(--ifm-color-emphasis-600)">block tree</text>
+
+  <!-- 2. ntnsync (neutral) -->
+  <rect x="232" y="44" width="176" height="96" rx="10" fill="var(--ifm-color-emphasis-600)" fill-opacity="0.07" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.5"/>
+  <text x="320" y="79" text-anchor="middle" font-size="19" font-weight="700" fill="var(--ifm-font-color-base)">ntnsync</text>
+  <text x="320" y="103" text-anchor="middle" font-size="12.5" fill="var(--ifm-font-color-base)">blocks &#8594; markdown</text>
+  <text x="320" y="123" text-anchor="middle" font-size="12.5" fill="var(--ifm-font-color-base)">props &#8594; frontmatter</text>
+
+  <!-- 3. *.md (owned) -->
+  <rect x="462" y="44" width="176" height="96" rx="10" fill="var(--ntn-owned)" fill-opacity="0.09" stroke="var(--ntn-owned)" stroke-width="1.5"/>
+  <text x="550" y="79" text-anchor="middle" font-size="19" font-weight="700" font-family="var(--ifm-font-family-monospace)" fill="var(--ntn-owned)">*.md</text>
+  <text x="550" y="103" text-anchor="middle" font-size="12.5" fill="var(--ifm-font-color-base)">stable paths</text>
+  <text x="550" y="123" text-anchor="middle" font-size="12.5" fill="var(--ifm-color-emphasis-600)">+ attachments</text>
+
+  <!-- 4. git (owned) -->
+  <rect x="692" y="44" width="176" height="96" rx="10" fill="var(--ntn-owned)" fill-opacity="0.09" stroke="var(--ntn-owned)" stroke-width="1.5"/>
+  <text x="780" y="79" text-anchor="middle" font-size="19" font-weight="700" font-family="var(--ifm-font-family-monospace)" fill="var(--ntn-owned)">git</text>
+  <text x="780" y="103" text-anchor="middle" font-size="12.5" fill="var(--ifm-font-color-base)">one commit</text>
+  <text x="780" y="123" text-anchor="middle" font-size="12.5" fill="var(--ifm-font-color-base)">per sync</text>
+
+  <!-- forward arrows -->
+  <path d="M182 92 H220" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.6" fill="none"/>
+  <path d="M220 85.5 L229 92 L220 98.5 Z" fill="var(--ifm-color-emphasis-600)"/>
+  <path d="M412 92 H450" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.6" fill="none"/>
+  <path d="M450 85.5 L459 92 L450 98.5 Z" fill="var(--ifm-color-emphasis-600)"/>
+  <path d="M642 92 H680" stroke="var(--ifm-color-emphasis-600)" stroke-width="1.6" fill="none"/>
+  <path d="M680 85.5 L689 92 L680 98.5 Z" fill="var(--ifm-color-emphasis-600)"/>
+
+  <!-- read-only return path: nothing is ever written back -->
+  <path d="M780 148 V196 H90 V157" stroke="var(--ntn-hosted)" stroke-width="1.6" stroke-dasharray="6 6" fill="none"/>
+  <path d="M83.5 157 L90 148 L96.5 157 Z" fill="var(--ntn-hosted)"/>
+  <text x="435" y="220" text-anchor="middle" font-size="13" font-style="italic" fill="var(--ntn-hosted)">nothing is ever written back &#8212; ntnsync only reads Notion</text>
+</svg>

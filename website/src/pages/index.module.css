@@ -17,3 +17,41 @@
   padding: 2rem 0;
   width: 100%;
 }
+
+.thesis {
+  padding: 2.5rem 0 0;
+}
+
+.thesisLead {
+  font-size: 1.25rem;
+  line-height: 1.6;
+  max-width: 46rem;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.sectionTitle {
+  font-size: 1.5rem;
+}
+
+.features .sectionTitle {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.reasonIndex {
+  display: block;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.875rem;
+  letter-spacing: 0.12em;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.35rem;
+}
+
+.contrast {
+  padding: 1rem 0 3.5rem;
+}
+
+.contrast .buttons {
+  margin-top: 2rem;
+}
