@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/fclairamb/ntnsync/compare/v0.9.0...v0.10.0) (2026-08-21)
+
+
+### Features
+
+* **store:** add a GitHub API storage backend ([#158](https://github.com/fclairamb/ntnsync/issues/158)) ([16b0896](https://github.com/fclairamb/ntnsync/commit/16b08962fd8704e60b62c6c33cb304ae4a71f305))
+
 ## [0.9.0](https://github.com/fclairamb/ntnsync/compare/v0.8.3...v0.9.0) (2026-08-20)
 
 
