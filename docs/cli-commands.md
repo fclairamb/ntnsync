@@ -358,7 +358,7 @@ ntnsync remote test
 | `NTN_QUEUE_BRANCH` | Optional separate branch for the sync queue (`.notion-sync/queue`). Empty = disabled |
 | `NTN_GIT_USER` | Git commit author name (default: `ntnsync`) |
 | `NTN_GIT_EMAIL` | Git commit author email (default: `ntnsync@localhost`) |
-| `NTN_STORAGE` | Storage mode: `local` or `remote` (auto-detected from `NTN_GIT_URL`) |
+| `NTN_STORAGE` | Storage mode: `local`, `remote` or `github` (auto-detected as `local`/`remote` from `NTN_GIT_URL`) |
 | `NTN_GIT_DEPTH` | Shallow clone/fetch depth (default: `1`). `0` fetches full history |
 
 **`NTN_GIT_DEPTH`**: Controls how much git history is cloned and kept in sync.
@@ -371,6 +371,11 @@ ntnsync remote test
   queue branch clone when `NTN_QUEUE_BRANCH` is set.
 - An unset or malformed value falls back to the default (`1`) rather than
   failing startup.
+
+**`NTN_STORAGE=github`**: Opt-in backend that talks to the GitHub Git Data API
+directly — no clone, no working tree, no local filesystem writes. `reindex`,
+`cleanup` and `list --tree` are not supported in this mode and fail fast naming
+it. See [GitHub API storage](github-storage.md).
 
 **`NTN_QUEUE_BRANCH`**: When set, the rapidly-churning sync queue (`.notion-sync/queue`)
 is committed to a separate branch instead of the main branch. Page content,

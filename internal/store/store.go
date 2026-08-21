@@ -56,3 +56,29 @@ type Transaction interface {
 type ReadFSProvider interface {
 	FS() fs.FS
 }
+
+// RemoteStore is a Store that can synchronize with a remote repository.
+// Every concrete store in this package implements it, which is what lets
+// callers avoid type-switching on concrete store types.
+type RemoteStore interface {
+	Store
+
+	// Pull refreshes the local view from the remote. It is a no-op when
+	// remote operations are not enabled.
+	Pull(ctx context.Context) error
+
+	// IsRemoteEnabled reports whether remote operations are configured.
+	IsRemoteEnabled() bool
+
+	// RemoteConfig returns the remote configuration backing this store.
+	RemoteConfig() *RemoteConfig
+}
+
+// WholeTreeChecker is implemented by stores that cannot serve operations
+// requiring a walk of the entire repository tree. Stores that do not
+// implement it are assumed to support every operation.
+type WholeTreeChecker interface {
+	// CheckWholeTreeSupported returns a non-nil error naming the storage mode
+	// when the named command needs a whole-tree walk the store cannot provide.
+	CheckWholeTreeSupported(command string) error
+}

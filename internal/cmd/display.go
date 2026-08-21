@@ -255,6 +255,13 @@ func displayRemoteConfig(cfg *store.RemoteConfig) {
 	}
 
 	fmt.Printf("URL:      %s\n", cfg.URL)
+	if cfg.IsGitHubAPI() {
+		if owner, repo, err := cfg.GitHubRepo(); err == nil {
+			fmt.Printf("Repo:     %s/%s (GitHub Git Data API, no local clone)\n", owner, repo)
+		} else {
+			fmt.Printf("Repo:     invalid for NTN_STORAGE=github: %v\n", err)
+		}
+	}
 	if cfg.IsSSH() {
 		fmt.Println("Auth:     SSH (using ssh-agent)")
 	} else {

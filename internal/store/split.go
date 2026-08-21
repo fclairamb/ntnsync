@@ -15,13 +15,14 @@ const queuePrefix = ".notion-sync/queue"
 // everything else — including content, ".notion-sync/ids", and
 // ".notion-sync/state.json" — goes to contentStore (the main branch).
 type SplitStore struct {
-	contentStore *LocalStore
-	queueStore   *LocalStore
+	contentStore RemoteStore
+	queueStore   RemoteStore
 }
 
 // NewSplitStore creates a new SplitStore that routes queue operations
-// to a separate store.
-func NewSplitStore(contentStore, queueStore *LocalStore) *SplitStore {
+// to a separate store. Both stores are held as interface values so any
+// backend (local git or GitHub API) can back either branch.
+func NewSplitStore(contentStore, queueStore RemoteStore) *SplitStore {
 	return &SplitStore{
 		contentStore: contentStore,
 		queueStore:   queueStore,
@@ -32,7 +33,7 @@ func isQueuePath(path string) bool {
 	return path == queuePrefix || strings.HasPrefix(path, queuePrefix+"/")
 }
 
-func (s *SplitStore) storeFor(path string) *LocalStore {
+func (s *SplitStore) storeFor(path string) RemoteStore {
 	if isQueuePath(path) {
 		return s.queueStore
 	}
@@ -115,13 +116,22 @@ func (s *SplitStore) RemoteConfig() *RemoteConfig {
 }
 
 // ContentStore returns the underlying content store.
-func (s *SplitStore) ContentStore() *LocalStore {
+func (s *SplitStore) ContentStore() RemoteStore {
 	return s.contentStore
 }
 
 // QueueStore returns the underlying queue store.
-func (s *SplitStore) QueueStore() *LocalStore {
+func (s *SplitStore) QueueStore() RemoteStore {
 	return s.queueStore
+}
+
+// CheckWholeTreeSupported delegates to the content store when it advertises
+// the capability, since whole-tree operations always run against content.
+func (s *SplitStore) CheckWholeTreeSupported(command string) error {
+	if checker, ok := s.contentStore.(WholeTreeChecker); ok {
+		return checker.CheckWholeTreeSupported(command)
+	}
+	return nil
 }
 
 // splitTransaction routes write operations to the correct underlying transaction.

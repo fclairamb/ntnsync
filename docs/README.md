@@ -8,6 +8,7 @@ ntnsync synchronizes Notion pages to a local git repository as markdown files.
 |----------|-------------|
 | [CLI Commands](cli-commands.md) | All commands with flags, examples, and workflows |
 | [File Architecture](file-architecture.md) | Directory structure, state files, registries, queue system |
+| [GitHub API storage](github-storage.md) | The opt-in `NTN_STORAGE=github` backend: no clone, API-only reads and writes |
 | [Markdown Conversion](markdown-conversion.md) | How Notion blocks are converted to markdown |
 | [Development](development.md) | Logging guidelines, code organization, building |
 | [Commit Conventions](commit-conventions.md) | Conventional commits guide for PR titles |

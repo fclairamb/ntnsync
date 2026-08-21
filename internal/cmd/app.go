@@ -34,6 +34,12 @@ const (
 	// flagCompact is the reindex flag that migrates the registry index to its
 	// sharded layout.
 	flagCompact = "compact"
+
+	// cmdNameReindex is the reindex subcommand name, also used when reporting
+	// that a backend cannot serve it.
+	cmdNameReindex = "reindex"
+	// cmdNameStatus is the status subcommand name.
+	cmdNameStatus = "status"
 )
 
 var (
@@ -105,9 +111,12 @@ func setupLogging(cmd *cli.Command) {
 	cfg := store.LoadRemoteConfigFromEnv()
 	mode := cfg.EffectiveStorageMode()
 	storePath := resolveStorePath(cmd)
-	if mode == store.StorageModeRemote {
+	switch mode {
+	case store.StorageModeGitHub:
+		slog.Info("storage mode", "mode", "github", "url", cfg.URL, "branch", cfg.Branch)
+	case store.StorageModeRemote:
 		slog.Info("storage mode", "mode", "remote", "url", cfg.URL, "dir", storePath)
-	} else {
+	case store.StorageModeLocal, store.StorageModeAuto:
 		slog.Info("storage mode", "mode", "local", "dir", storePath)
 	}
 }
@@ -475,6 +484,12 @@ func listCommand() *cli.Command {
 				return err
 			}
 
+			if tree {
+				if treeErr := ensureWholeTreeSupported(storeInst, "list --tree"); treeErr != nil {
+					return treeErr
+				}
+			}
+
 			// Create crawler (no client needed for list)
 			crawler := sync.NewCrawler(nil, storeInst, sync.WithCrawlerLogger(slog.Default()))
 
@@ -503,7 +518,7 @@ func listCommand() *cli.Command {
 // statusCommand creates the status subcommand.
 func statusCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "status",
+		Name:  cmdNameStatus,
 		Usage: "Show sync status and queue information",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
@@ -555,7 +570,7 @@ func statusCommand() *cli.Command {
 // reindexCommand creates the reindex subcommand.
 func reindexCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "reindex",
+		Name:  cmdNameReindex,
 		Usage: "Rebuild registry from markdown files",
 		Flags: []cli.Flag{
 			verboseFlag,
@@ -575,6 +590,10 @@ func reindexCommand() *cli.Command {
 		Action: func(ctx context.Context, cmd *cli.Command) error {
 			storeInst, _, err := createStore(cmd)
 			if err != nil {
+				return err
+			}
+
+			if err := ensureWholeTreeSupported(storeInst, cmdNameReindex); err != nil {
 				return err
 			}
 
@@ -621,6 +640,10 @@ func cleanupCommand() *cli.Command {
 			storeInst, remoteConfig, err := createStore(cmd)
 			if err != nil {
 				return err
+			}
+
+			if unsupportedErr := ensureWholeTreeSupported(storeInst, "cleanup"); unsupportedErr != nil {
+				return unsupportedErr
 			}
 
 			// Create crawler (no client needed for cleanup)
@@ -816,31 +839,34 @@ func serveCommand() *cli.Command {
 	}
 }
 
-// storeRemoteConfig returns the remote config from a store, supporting both LocalStore and SplitStore.
+// storeRemoteConfig returns the remote config of any store that implements
+// store.RemoteStore. Every backend does; a nil result means a store type that
+// has no remote configuration at all.
 func storeRemoteConfig(storeInst store.Store) *store.RemoteConfig {
-	switch typed := storeInst.(type) {
-	case *store.LocalStore:
-		return typed.RemoteConfig()
-	case *store.SplitStore:
-		return typed.RemoteConfig()
-	default:
+	remote, ok := storeInst.(store.RemoteStore)
+	if !ok {
 		return nil
 	}
+	return remote.RemoteConfig()
 }
 
 // storePull pulls from remote if the store supports it.
 func storePull(ctx context.Context, storeInst store.Store) error {
-	switch typed := storeInst.(type) {
-	case *store.LocalStore:
-		if typed.IsRemoteEnabled() {
-			return typed.Pull(ctx)
-		}
-	case *store.SplitStore:
-		if typed.IsRemoteEnabled() {
-			return typed.Pull(ctx)
-		}
+	remote, ok := storeInst.(store.RemoteStore)
+	if !ok || !remote.IsRemoteEnabled() {
+		return nil
 	}
-	return nil
+	return remote.Pull(ctx)
+}
+
+// ensureWholeTreeSupported fails fast for commands that need to walk the whole
+// repository on a backend that cannot do it (NTN_STORAGE=github).
+func ensureWholeTreeSupported(storeInst store.Store, command string) error {
+	checker, ok := storeInst.(store.WholeTreeChecker)
+	if !ok {
+		return nil
+	}
+	return checker.CheckWholeTreeSupported(command)
 }
 
 // resolveStorePath returns the store path from NTN_DIR env var or --store-path flag.
@@ -865,6 +891,14 @@ func resolveStorePath(cmd *cli.Command) string {
 func createStore(cmd *cli.Command) (store.Store, *store.RemoteConfig, error) {
 	storePath := resolveStorePath(cmd)
 	remoteConfig := store.LoadRemoteConfigFromEnv()
+
+	if remoteConfig.IsGitHubAPI() {
+		storeInst, err := createGitHubStore(remoteConfig)
+		if err != nil {
+			return nil, nil, err
+		}
+		return storeInst, remoteConfig, nil
+	}
 
 	contentStore, err := store.NewLocalStore(storePath, store.WithRemoteConfig(remoteConfig))
 	if err != nil {
@@ -905,6 +939,34 @@ func createStore(cmd *cli.Command) (store.Store, *store.RemoteConfig, error) {
 	}
 
 	return contentStore, remoteConfig, nil
+}
+
+// createGitHubStore builds the API-backed store for NTN_STORAGE=github.
+// No clone, no working tree: the store path is not used at all.
+func createGitHubStore(remoteConfig *store.RemoteConfig) (store.Store, error) {
+	contentStore, err := store.NewGitHubStore(remoteConfig,
+		store.WithGitHubStoreLogger(slog.Default()))
+	if err != nil {
+		return nil, fmt.Errorf("create github store: %w", err)
+	}
+
+	slog.Info("github api storage enabled",
+		"url", remoteConfig.URL, "branch", contentStore.Branch())
+
+	if !remoteConfig.HasQueueBranch() {
+		return contentStore, nil
+	}
+
+	queueStore, err := store.NewGitHubStore(remoteConfig,
+		store.WithGitHubBranch(remoteConfig.QueueBranch),
+		store.WithGitHubStoreLogger(slog.Default()))
+	if err != nil {
+		return nil, fmt.Errorf("create github queue store: %w", err)
+	}
+
+	slog.Info("queue branch enabled", "branch", remoteConfig.QueueBranch)
+
+	return store.NewSplitStore(contentStore, queueStore), nil
 }
 
 // setupClientAndStore creates the Notion client and store from command flags.

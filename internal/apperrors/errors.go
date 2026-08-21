@@ -45,6 +45,29 @@ var (
 	// ErrHTTPSPasswordRequired is returned when HTTPS git URL is used without NTN_GIT_PASS.
 	ErrHTTPSPasswordRequired = errors.New("NTN_GIT_PASS required for HTTPS URLs")
 
+	// ErrNotGitHubURL is returned when NTN_STORAGE=github is used with a URL that is not a github.com repository URL.
+	ErrNotGitHubURL = errors.New("NTN_STORAGE=github requires a github.com repository URL in NTN_GIT_URL")
+
+	// ErrGitHubTokenRequired is returned when NTN_STORAGE=github is used without an API token.
+	ErrGitHubTokenRequired = errors.New("NTN_STORAGE=github requires an API token in NTN_GIT_PASS")
+
+	// ErrGitHubRefMoved is returned when a branch moved under us and the commit must be rebuilt.
+	ErrGitHubRefMoved = errors.New("github ref moved, rebuild required")
+
+	// ErrGitHubTreeTruncated is returned when the API truncates a tree listing.
+	ErrGitHubTreeTruncated = errors.New("github tree listing truncated")
+
+	// ErrGitHubUnsupportedBlobEncoding is returned when a blob comes back in an encoding we cannot decode.
+	ErrGitHubUnsupportedBlobEncoding = errors.New("unsupported github blob encoding")
+
+	// ErrGitHubBufferFull is returned when a buffered transaction exceeds its byte budget.
+	ErrGitHubBufferFull = errors.New("github transaction buffer full")
+
+	// ErrGitHubWholeTreeUnsupported is returned for commands needing a whole-tree walk in NTN_STORAGE=github.
+	ErrGitHubWholeTreeUnsupported = errors.New(
+		"command requires a whole-repository walk, which NTN_STORAGE=github does not support; " +
+			"run it with the git backend (NTN_STORAGE=remote or local)")
+
 	// ErrMaxRetriesExceeded is returned when the maximum number of retries is exceeded.
 	ErrMaxRetriesExceeded = errors.New("max retries exceeded")
 
