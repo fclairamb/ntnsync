@@ -1,13 +1,13 @@
 module github.com/fclairamb/ntnsync
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/go-git/go-git/v5 v5.19.2
 	github.com/knadh/koanf/providers/env/v2 v2.0.1
 	github.com/knadh/koanf/v2 v2.3.6
 	github.com/urfave/cli/v3 v3.12.0
-	golang.org/x/text v0.41.0
+	golang.org/x/text v0.42.0
 	golang.org/x/time v0.15.0
 )
 
