@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.10.1](https://github.com/fclairamb/ntnsync/compare/v0.10.0...v0.10.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.7 ([#178](https://github.com/fclairamb/ntnsync/issues/178)) ([8ee12f0](https://github.com/fclairamb/ntnsync/commit/8ee12f065156812dcbb0e4ad97b4018bdb6d6884))
+* **deps:** update module github.com/urfave/cli/v3 to v3.12.0 ([#168](https://github.com/fclairamb/ntnsync/issues/168)) ([71a7581](https://github.com/fclairamb/ntnsync/commit/71a7581d756e567055c6f4faee39009f73e7525a))
+* **deps:** update module github.com/urfave/cli/v3 to v3.13.0 ([#177](https://github.com/fclairamb/ntnsync/issues/177)) ([f742e63](https://github.com/fclairamb/ntnsync/commit/f742e63cacf1aa16cb1d09f5e5defe54c8f98f66))
+
 ## [0.10.0](https://github.com/fclairamb/ntnsync/compare/v0.9.0...v0.10.0) (2026-08-21)
 
 
