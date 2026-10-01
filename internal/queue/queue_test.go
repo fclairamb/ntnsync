@@ -11,17 +11,17 @@ import (
 )
 
 const (
-	testQueueFile    = "00000999.json"
+	testQueueFile    = "00099999.json"
 	testQueueTypeUpd = "update"
 )
 
-// TestQueue_StartsAt1000 verifies that regular queue entries start at ID 1000.
-func TestQueue_StartsAt1000(t *testing.T) {
+// TestQueue_StartsAt100000 verifies that regular queue entries start at ID 100000.
+func TestQueue_StartsAt100000(t *testing.T) {
 	t.Parallel()
 	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
-	// Get the first queue number (should be 1000)
+	// Get the first queue number (should be 100000)
 	num, err := qm.GetNextQueueNumber(ctx)
 	if err != nil {
 		t.Fatalf("GetNextQueueNumber failed: %v", err)
@@ -48,8 +48,8 @@ func TestQueue_IncrementingIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateEntry failed: %v", err)
 	}
-	if filename1 != "00001000.json" {
-		t.Errorf("expected first entry filename to be 00001000.json, got %s", filename1)
+	if filename1 != "00100000.json" {
+		t.Errorf("expected first entry filename to be 00100000.json, got %s", filename1)
 	}
 
 	// Create second regular entry
@@ -62,12 +62,12 @@ func TestQueue_IncrementingIDs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateEntry failed: %v", err)
 	}
-	if filename2 != "00001001.json" {
-		t.Errorf("expected second entry filename to be 00001001.json, got %s", filename2)
+	if filename2 != "00100001.json" {
+		t.Errorf("expected second entry filename to be 00100001.json, got %s", filename2)
 	}
 }
 
-// TestQueueFromWebhook_FirstEntry verifies the first webhook entry gets ID 999.
+// TestQueueFromWebhook_FirstEntry verifies the first webhook entry gets ID 99999.
 func TestQueueFromWebhook_FirstEntry(t *testing.T) {
 	t.Parallel()
 	_, qm := createTestStoreAndManager(t)
@@ -80,7 +80,7 @@ func TestQueueFromWebhook_FirstEntry(t *testing.T) {
 	}
 
 	if filename != testQueueFile {
-		t.Errorf("expected first webhook entry filename to be 00000999.json, got %s", filename)
+		t.Errorf("expected first webhook entry filename to be 00099999.json, got %s", filename)
 	}
 
 	// Verify the entry was created correctly
@@ -105,31 +105,31 @@ func TestQueueFromWebhook_Decrementing(t *testing.T) {
 	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
-	// Create first webhook entry (999)
+	// Create first webhook entry (99999)
 	filename1, err := qm.CreateWebhookEntry(ctx, "page1", "test")
 	if err != nil {
 		t.Fatalf("CreateWebhookEntry 1 failed: %v", err)
 	}
 	if filename1 != testQueueFile {
-		t.Errorf("expected first webhook entry to be 00000999.json, got %s", filename1)
+		t.Errorf("expected first webhook entry to be 00099999.json, got %s", filename1)
 	}
 
-	// Create second webhook entry (998)
+	// Create second webhook entry (99998)
 	filename2, err := qm.CreateWebhookEntry(ctx, "page2", "test")
 	if err != nil {
 		t.Fatalf("CreateWebhookEntry 2 failed: %v", err)
 	}
-	if filename2 != "00000998.json" {
-		t.Errorf("expected second webhook entry to be 00000998.json, got %s", filename2)
+	if filename2 != "00099998.json" {
+		t.Errorf("expected second webhook entry to be 00099998.json, got %s", filename2)
 	}
 
-	// Create third webhook entry (997)
+	// Create third webhook entry (99997)
 	filename3, err := qm.CreateWebhookEntry(ctx, "page3", "test")
 	if err != nil {
 		t.Fatalf("CreateWebhookEntry 3 failed: %v", err)
 	}
-	if filename3 != "00000997.json" {
-		t.Errorf("expected third webhook entry to be 00000997.json, got %s", filename3)
+	if filename3 != "00099997.json" {
+		t.Errorf("expected third webhook entry to be 00099997.json, got %s", filename3)
 	}
 }
 
@@ -139,7 +139,7 @@ func TestQueueOrdering(t *testing.T) {
 	_, qm := createTestStoreAndManager(t)
 	ctx := context.Background()
 
-	// Create a regular entry first (should get ID 1000)
+	// Create a regular entry first (should get ID 100000)
 	regularEntry := Entry{
 		Type:   "init",
 		Folder: "test",
@@ -150,7 +150,7 @@ func TestQueueOrdering(t *testing.T) {
 		t.Fatalf("CreateEntry failed: %v", err)
 	}
 
-	// Create webhook entries (should get IDs 999, 998)
+	// Create webhook entries (should get IDs 99999, 99998)
 	_, err = qm.CreateWebhookEntry(ctx, "webhook1", "test")
 	if err != nil {
 		t.Fatalf("CreateWebhookEntry 1 failed: %v", err)
@@ -160,13 +160,13 @@ func TestQueueOrdering(t *testing.T) {
 		t.Fatalf("CreateWebhookEntry 2 failed: %v", err)
 	}
 
-	// List entries (should be sorted: 998, 999, 1000)
+	// List entries (should be sorted: 99998, 99999, 100000)
 	files, err := qm.ListEntries(ctx)
 	if err != nil {
 		t.Fatalf("ListEntries failed: %v", err)
 	}
 
-	expected := []string{"00000998.json", testQueueFile, "00001000.json"}
+	expected := []string{"00099998.json", testQueueFile, "00100000.json"}
 	if len(files) != len(expected) {
 		t.Fatalf("expected %d entries, got %d: %v", len(expected), len(files), files)
 	}
@@ -209,7 +209,7 @@ func TestGetMinQueueID(t *testing.T) {
 		t.Errorf("expected min ID to be 0 for empty queue, got %d", minID)
 	}
 
-	// Add regular entry (1000)
+	// Add regular entry (100000)
 	regularEntry := Entry{
 		Type:   "init",
 		Folder: "test",
@@ -224,11 +224,11 @@ func TestGetMinQueueID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMinQueueID failed: %v", err)
 	}
-	if minID != 1000 {
-		t.Errorf("expected min ID to be 1000, got %d", minID)
+	if minID != 100000 {
+		t.Errorf("expected min ID to be 100000, got %d", minID)
 	}
 
-	// Add webhook entry (999)
+	// Add webhook entry (99999)
 	_, err = qm.CreateWebhookEntry(ctx, "page2", "test")
 	if err != nil {
 		t.Fatalf("CreateWebhookEntry failed: %v", err)
@@ -238,8 +238,8 @@ func TestGetMinQueueID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetMinQueueID failed: %v", err)
 	}
-	if minID != 999 {
-		t.Errorf("expected min ID to be 999, got %d", minID)
+	if minID != 99999 {
+		t.Errorf("expected min ID to be 99999, got %d", minID)
 	}
 }
 
@@ -262,31 +262,31 @@ func TestWebhookEntryWithExistingRegular(t *testing.T) {
 		}
 	}
 
-	// Verify regular entries are at 1000, 1001, 1002
+	// Verify regular entries are at 100000, 100001, 100002
 	files, _ := qm.ListEntries(ctx)
 	if len(files) != 3 {
 		t.Fatalf("expected 3 entries, got %d", len(files))
 	}
-	if files[0] != "00001000.json" || files[2] != "00001002.json" {
+	if files[0] != "00100000.json" || files[2] != "00100002.json" {
 		t.Errorf("unexpected regular entry filenames: %v", files)
 	}
 
-	// Add webhook entry (should get 999, not affect regular entries)
+	// Add webhook entry (should get 99999, not affect regular entries)
 	webhookFile, err := qm.CreateWebhookEntry(ctx, "webhook1", "test")
 	if err != nil {
 		t.Fatalf("CreateWebhookEntry failed: %v", err)
 	}
 	if webhookFile != testQueueFile {
-		t.Errorf("expected webhook entry to be 00000999.json, got %s", webhookFile)
+		t.Errorf("expected webhook entry to be 00099999.json, got %s", webhookFile)
 	}
 
-	// Verify next regular entry still gets 1003
+	// Verify next regular entry still gets 100003
 	nextNum, err := qm.GetNextQueueNumber(ctx)
 	if err != nil {
 		t.Fatalf("GetNextQueueNumber failed: %v", err)
 	}
-	if nextNum != 1003 {
-		t.Errorf("expected next queue number to be 1003, got %d", nextNum)
+	if nextNum != 100003 {
+		t.Errorf("expected next queue number to be 100003, got %d", nextNum)
 	}
 }
 
