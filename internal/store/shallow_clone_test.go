@@ -10,8 +10,6 @@ import (
 	"github.com/go-git/go-git/v5"
 )
 
-func boolPtr(b bool) *bool { return &b }
-
 // newTestRemoteConfig returns a RemoteConfig suitable for exercising a
 // LocalStore against a local bare "remote" repository at barePath.
 func newTestRemoteConfig(barePath string, depth int) *RemoteConfig {
@@ -20,7 +18,7 @@ func newTestRemoteConfig(barePath string, depth int) *RemoteConfig {
 		Branch:  defaultBranch,
 		User:    "tester",
 		Email:   "tester@example.com",
-		Push:    boolPtr(true),
+		Push:    new(true),
 		Depth:   depth,
 		Storage: StorageModeRemote,
 		// GetAuth() requires a non-empty Password for non-SSH URLs. The local

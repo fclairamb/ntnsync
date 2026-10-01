@@ -313,7 +313,7 @@ func (c *Crawler) queuePagesForPull(
 
 	c.logger.InfoContext(ctx, "updated pull state",
 		"last_pull_time", now,
-		"oldest_pull_result", c.state.OldestPullResult)
+		"oldest_pull_result", *c.state.OldestPullResult)
 
 	return nil
 }
