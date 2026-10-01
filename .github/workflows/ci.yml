@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   lint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -32,7 +32,7 @@ jobs:
           version: v2.13.2
 
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -50,7 +50,7 @@ jobs:
         continue-on-error: true
 
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -78,7 +78,7 @@ jobs:
           retention-days: 1
 
   docker:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [lint, test, build]
     steps:
       - uses: actions/checkout@v7.0.1
