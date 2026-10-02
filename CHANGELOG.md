@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.2](https://github.com/fclairamb/ntnsync/compare/v0.10.1...v0.10.2) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/urfave/cli/v3 to v3.14.0 ([#182](https://github.com/fclairamb/ntnsync/issues/182)) ([de251bb](https://github.com/fclairamb/ntnsync/commit/de251bb53b8acd8efc7862bd06d8c1b8cfa1d738))
+
 ## [0.10.1](https://github.com/fclairamb/ntnsync/compare/v0.10.0...v0.10.1) (2026-10-01)
 
 
