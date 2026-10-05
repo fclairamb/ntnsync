@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/go-git/go-git/v5 v5.19.3
-	github.com/knadh/koanf/providers/env/v2 v2.0.1
+	github.com/knadh/koanf/providers/env/v2 v2.0.2
 	github.com/knadh/koanf/v2 v2.3.7
 	github.com/urfave/cli/v3 v3.14.0
 	golang.org/x/text v0.42.0
