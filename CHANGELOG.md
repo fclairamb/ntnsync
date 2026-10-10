@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.10.2](https://github.com/fclairamb/ntnsync/compare/v0.10.1...v0.10.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v5 to v5.19.3 ([#184](https://github.com/fclairamb/ntnsync/issues/184)) ([b11a02c](https://github.com/fclairamb/ntnsync/commit/b11a02c99bafe00f0585601b0a3c74525688653d))
+* **deps:** update module github.com/knadh/koanf/providers/env/v2 to v2.0.2 ([#185](https://github.com/fclairamb/ntnsync/issues/185)) ([5acec63](https://github.com/fclairamb/ntnsync/commit/5acec6372feb9e8978a02d48a14085ce6380e624))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.8 ([#186](https://github.com/fclairamb/ntnsync/issues/186)) ([33a7d54](https://github.com/fclairamb/ntnsync/commit/33a7d54b54d18d70d491bbdae38ae362a6e24c64))
+* **deps:** update module github.com/urfave/cli/v3 to v3.14.0 ([#182](https://github.com/fclairamb/ntnsync/issues/182)) ([de251bb](https://github.com/fclairamb/ntnsync/commit/de251bb53b8acd8efc7862bd06d8c1b8cfa1d738))
+* **deps:** update module golang.org/x/text to v0.43.0 ([#188](https://github.com/fclairamb/ntnsync/issues/188)) ([a1c8c4f](https://github.com/fclairamb/ntnsync/commit/a1c8c4fcc28d90fb769c378502ba7df9014c1bfa))
+
 ## [0.10.1](https://github.com/fclairamb/ntnsync/compare/v0.10.0...v0.10.1) (2026-10-01)
 
 
