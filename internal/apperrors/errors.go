@@ -68,6 +68,10 @@ var (
 		"command requires a whole-repository walk, which NTN_STORAGE=github does not support; " +
 			"run it with the git backend (NTN_STORAGE=remote or local)")
 
+	// ErrLocalRepoBroken is returned when the local clone cannot be pushed even after
+	// integrating the remote branch. The clone is flagged and re-cloned on next start.
+	ErrLocalRepoBroken = errors.New("local git repository is broken, it will be re-cloned on next start")
+
 	// ErrMaxRetriesExceeded is returned when the maximum number of retries is exceeded.
 	ErrMaxRetriesExceeded = errors.New("max retries exceeded")
 

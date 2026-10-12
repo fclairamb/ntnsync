@@ -61,7 +61,7 @@ func readTestFile(t *testing.T, storePath, name string) string {
 // TestShallowClone_ClonePushPull verifies the full clone -> add -> commit ->
 // push -> pull cycle works when the local clone is shallow (Depth: 1), which
 // is now the default (NTN_GIT_DEPTH unset). This is the risk area flagged in
-// specs/todos/2026-08-20-git-shallow-clone.md: Pull/fetchAndMergeLocked were
+// specs/done/2026/08/2026-08-20-git-shallow-clone.md: Pull and its diverged path were
 // previously unverified against a shallow clone.
 func TestShallowClone_ClonePushPull(t *testing.T) {
 	t.Parallel()
@@ -138,8 +138,8 @@ func TestShallowClone_ClonePushPull(t *testing.T) {
 	}
 }
 
-// TestShallowClone_PullDiverged verifies the fetchAndMergeLocked reset path
-// (triggered by a non-fast-forward pull) also works against a shallow clone.
+// TestShallowClone_PullDiverged verifies a non-fast-forward pull on a shallow
+// clone integrates the remote changes and keeps the unpushed local ones.
 func TestShallowClone_PullDiverged(t *testing.T) {
 	t.Parallel()
 
@@ -190,12 +190,17 @@ func TestShallowClone_PullDiverged(t *testing.T) {
 	}
 
 	// Consumer's branch has now diverged from origin/main: pulling must go
-	// through fetchAndMergeLocked (fetch + hard reset to remote).
+	// through integrateRemoteLocked.
 	if pullErr := consumerStore.Pull(ctx); pullErr != nil {
 		t.Fatalf("pull on diverged shallow clone: %v", pullErr)
 	}
 
 	if got := readTestFile(t, consumerPath, "publisher.txt"); got != "hello from publisher" {
 		t.Fatalf("pulled file content = %q, want %q", got, "hello from publisher")
+	}
+
+	// The unpushed local commit is replayed on top of the remote, not dropped.
+	if got := readTestFile(t, consumerPath, "local-only.txt"); got != "local" {
+		t.Fatalf("local-only.txt = %q, want %q", got, "local")
 	}
 }
