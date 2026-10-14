@@ -230,6 +230,9 @@ func (s *LocalStore) pullLocked(ctx context.Context) error {
 
 	s.logger.InfoContext(ctx, "pulling from remote", "url", s.remoteConfig.URL, "branch", s.remoteConfig.Branch)
 
+	// Captured before the pull fetches, which moves the remote-tracking ref.
+	baseHash := s.remoteTrackingHash()
+
 	err = worktree.PullContext(ctx, &git.PullOptions{
 		RemoteName:    gitRemoteOrigin,
 		ReferenceName: plumbing.NewBranchReferenceName(s.remoteConfig.Branch),
@@ -248,8 +251,8 @@ func (s *LocalStore) pullLocked(ctx context.Context) error {
 		}
 		// Handle non-fast-forward case (diverged branches)
 		if strings.Contains(err.Error(), "non-fast-forward") {
-			s.logger.InfoContext(ctx, "branches diverged, fetching and merging")
-			return s.fetchAndMergeLocked(ctx, auth, worktree)
+			s.logger.InfoContext(ctx, "branches diverged, integrating remote changes")
+			return s.integrateRemoteLocked(ctx, auth, baseHash)
 		}
 		return fmt.Errorf("pull: %w", err)
 	}
@@ -258,51 +261,10 @@ func (s *LocalStore) pullLocked(ctx context.Context) error {
 	return nil
 }
 
-// fetchAndMergeLocked fetches remote changes and resets to remote.
-// For auto-generated content like ntnsync, we favor the remote version
-// since it's already published. The sync process will re-apply any changes.
-func (s *LocalStore) fetchAndMergeLocked(ctx context.Context, auth transport.AuthMethod, worktree *git.Worktree) error {
-	// Fetch remote changes
-	err := s.repo.FetchContext(ctx, &git.FetchOptions{
-		RemoteName: gitRemoteOrigin,
-		Auth:       auth,
-		Depth:      s.remoteConfig.Depth,
-	})
-	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
-		return fmt.Errorf("fetch: %w", err)
-	}
-
-	// Get remote branch reference
-	remoteBranch := plumbing.NewRemoteReferenceName(gitRemoteOrigin, s.remoteConfig.Branch)
-	remoteRef, err := s.repo.Reference(remoteBranch, true)
-	if err != nil {
-		return fmt.Errorf("get remote ref: %w", err)
-	}
-
-	s.logger.InfoContext(ctx, "resetting to remote",
-		"remote_commit", remoteRef.Hash().String()[:7])
-
-	// Reset to remote - this is safe for auto-generated content
-	if err := worktree.Reset(&git.ResetOptions{
-		Commit: remoteRef.Hash(),
-		Mode:   git.HardReset,
-	}); err != nil {
-		return fmt.Errorf("reset to remote: %w", err)
-	}
-
-	// Update the local branch reference to point to the remote commit
-	branchRef := plumbing.NewBranchReferenceName(s.remoteConfig.Branch)
-	ref := plumbing.NewHashReference(branchRef, remoteRef.Hash())
-	if err := s.repo.Storer.SetReference(ref); err != nil {
-		return fmt.Errorf("update branch ref: %w", err)
-	}
-
-	s.logger.InfoContext(ctx, "reset to remote complete")
-	return nil
-}
-
 // Push pushes local commits to the remote repository.
-// If a non-fast-forward error occurs, it will attempt to pull first and retry the push.
+// If the remote branch moved, the local changes are replayed on top of it and
+// the push is retried once. If that still fails, the clone is flagged so the
+// next start replaces it instead of crash-looping on the same commits.
 func (s *LocalStore) Push(ctx context.Context) error {
 	if !s.IsRemoteEnabled() {
 		return nil
@@ -321,20 +283,27 @@ func (s *LocalStore) Push(ctx context.Context) error {
 		return nil
 	}
 
-	if !strings.Contains(err.Error(), "non-fast-forward") {
+	if !isDivergedPushErr(err) {
 		return err
 	}
 
-	// Handle non-fast-forward error by pulling and retrying
-	s.logger.WarnContext(ctx, "push rejected (non-fast-forward), pulling and retrying", "error", err)
+	s.logger.WarnContext(ctx, "push rejected, integrating remote changes and retrying", "error", err)
 
-	if pullErr := s.pullLocked(ctx); pullErr != nil {
-		return fmt.Errorf("pull before retry: %w", pullErr)
+	if intErr := s.integrateRemoteLocked(ctx, auth, s.remoteTrackingHash()); intErr != nil {
+		s.flagForReclone(ctx, intErr)
+		return fmt.Errorf("%w: integrate remote: %w (push: %w)", apperrors.ErrLocalRepoBroken, intErr, err)
 	}
 
-	s.logger.InfoContext(ctx, "retrying push after pull")
+	s.logger.InfoContext(ctx, "retrying push after integrating remote changes")
 
-	return s.pushLocked(ctx, auth)
+	if err = s.pushLocked(ctx, auth); err != nil {
+		if isDivergedPushErr(err) {
+			s.flagForReclone(ctx, err)
+			return fmt.Errorf("%w: %w", apperrors.ErrLocalRepoBroken, err)
+		}
+		return err
+	}
+	return nil
 }
 
 // pushLocked performs the actual push operation. Caller must hold s.mu.
@@ -782,8 +751,26 @@ func (s *LocalStore) initializeRepository(path string) (*git.Repository, error) 
 		return s.cloneFromRemote(path)
 	}
 
+	// The remote is the source of truth: a clone that cannot be used is
+	// replaced rather than left to crash the process on every start.
+	if s.remoteConfig.IsEnabled() && isGitRepo(path) {
+		if healthErr := checkRepoHealth(path); healthErr != nil {
+			s.logger.Error("local repository is unusable, re-cloning", "path", path, "reason", healthErr)
+			if err := os.RemoveAll(path); err != nil {
+				return nil, fmt.Errorf("remove broken repository: %w", err)
+			}
+			return s.cloneFromRemote(path)
+		}
+	}
+
 	// Otherwise open or create local repository
 	return s.openOrCreateLocalRepo(path)
+}
+
+// isGitRepo reports whether path contains a .git entry.
+func isGitRepo(path string) bool {
+	_, err := os.Stat(filepath.Join(path, git.GitDirName))
+	return err == nil
 }
 
 // cloneFromRemote clones a repository from the remote URL.
