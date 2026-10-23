@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.10.3](https://github.com/fclairamb/ntnsync/compare/v0.10.2...v0.10.3) (2026-10-23)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/knadh/koanf/v2 to v2.4.0 ([#193](https://github.com/fclairamb/ntnsync/issues/193)) ([3f94ed9](https://github.com/fclairamb/ntnsync/commit/3f94ed954b213471ee50a06776bfbd6b1991a348))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.4.1 ([#195](https://github.com/fclairamb/ntnsync/issues/195)) ([97e3db0](https://github.com/fclairamb/ntnsync/commit/97e3db08dc4f0f9ee319f7549bb6af5ae1db1c8f))
+
 ## [0.10.2](https://github.com/fclairamb/ntnsync/compare/v0.10.1...v0.10.2) (2026-10-10)
 
 
