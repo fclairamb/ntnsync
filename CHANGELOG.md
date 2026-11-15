@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.10.2](https://github.com/fclairamb/ntnsync/compare/v0.10.1...v0.10.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/go-git/go-git/v5 to v5.19.3 ([#184](https://github.com/fclairamb/ntnsync/issues/184)) ([b11a02c](https://github.com/fclairamb/ntnsync/commit/b11a02c99bafe00f0585601b0a3c74525688653d))
+* **deps:** update module github.com/knadh/koanf/providers/env/v2 to v2.0.2 ([#185](https://github.com/fclairamb/ntnsync/issues/185)) ([5acec63](https://github.com/fclairamb/ntnsync/commit/5acec6372feb9e8978a02d48a14085ce6380e624))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.8 ([#186](https://github.com/fclairamb/ntnsync/issues/186)) ([33a7d54](https://github.com/fclairamb/ntnsync/commit/33a7d54b54d18d70d491bbdae38ae362a6e24c64))
+* **deps:** update module github.com/urfave/cli/v3 to v3.14.0 ([#182](https://github.com/fclairamb/ntnsync/issues/182)) ([de251bb](https://github.com/fclairamb/ntnsync/commit/de251bb53b8acd8efc7862bd06d8c1b8cfa1d738))
+* **deps:** update module golang.org/x/text to v0.43.0 ([#188](https://github.com/fclairamb/ntnsync/issues/188)) ([a1c8c4f](https://github.com/fclairamb/ntnsync/commit/a1c8c4fcc28d90fb769c378502ba7df9014c1bfa))
+
+## [0.10.1](https://github.com/fclairamb/ntnsync/compare/v0.10.0...v0.10.1) (2026-10-01)
+
+
+### Bug Fixes
+
+* **deps:** go 1.26, x/text v0.42.0, x/time v0.16.0, golangci-lint v2.14.0 ([#181](https://github.com/fclairamb/ntnsync/issues/181)) ([27e0842](https://github.com/fclairamb/ntnsync/commit/27e08429704756021b848e8aeb54620876ec73bd))
+* **deps:** update module github.com/knadh/koanf/v2 to v2.3.7 ([#178](https://github.com/fclairamb/ntnsync/issues/178)) ([8ee12f0](https://github.com/fclairamb/ntnsync/commit/8ee12f065156812dcbb0e4ad97b4018bdb6d6884))
+* **deps:** update module github.com/urfave/cli/v3 to v3.12.0 ([#168](https://github.com/fclairamb/ntnsync/issues/168)) ([71a7581](https://github.com/fclairamb/ntnsync/commit/71a7581d756e567055c6f4faee39009f73e7525a))
+* **deps:** update module github.com/urfave/cli/v3 to v3.13.0 ([#177](https://github.com/fclairamb/ntnsync/issues/177)) ([f742e63](https://github.com/fclairamb/ntnsync/commit/f742e63cacf1aa16cb1d09f5e5defe54c8f98f66))
+
 ## [0.10.0](https://github.com/fclairamb/ntnsync/compare/v0.9.0...v0.10.0) (2026-08-21)
 
 

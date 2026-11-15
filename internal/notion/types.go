@@ -767,8 +767,7 @@ func (e *APIError) IsPermanent() bool {
 
 // IsPermanentError checks if an error (possibly wrapped) is a permanent Notion API error.
 func IsPermanentError(err error) bool {
-	var apiErr *APIError
-	if errors.As(err, &apiErr) {
+	if apiErr, ok := errors.AsType[*APIError](err); ok {
 		return apiErr.IsPermanent()
 	}
 	if errors.Is(err, apperrors.ErrNoDataSources) {

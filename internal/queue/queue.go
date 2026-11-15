@@ -20,7 +20,7 @@ const (
 	queueDir           = ".notion-sync/queue"
 	queueFileFormat    = "%08d.json" // 00000001.json, 00000002.json, etc.
 	maxItemsPerQueue   = 10          // Maximum page IDs per queue file
-	webhookIDThreshold = 1000        // IDs below this are for webhook events (high priority)
+	webhookIDThreshold = 100000      // IDs below this are for webhook events (high priority)
 )
 
 // Page represents a page in the queue with its last edited time.
@@ -200,7 +200,7 @@ func (qm *Manager) IsPageQueued(ctx context.Context, pageID, queueType string) (
 }
 
 // GetNextQueueNumber returns the next available queue file number for regular (non-webhook) entries.
-// Regular entries start at webhookIDThreshold (1000) and increment upward.
+// Regular entries start at webhookIDThreshold (100000) and increment upward.
 func (qm *Manager) GetNextQueueNumber(ctx context.Context) (int, error) {
 	files, err := qm.ListEntries(ctx)
 	if err != nil {
@@ -240,7 +240,7 @@ func (qm *Manager) GetMinQueueID(ctx context.Context) (int, error) {
 }
 
 // CreateWebhookEntry creates a queue entry for webhook-triggered events.
-// Webhook entries use IDs below webhookIDThreshold (decrementing from 999, 998, ...)
+// Webhook entries use IDs below webhookIDThreshold (decrementing from 99999, 99998, ...)
 // to ensure they are processed before regular queue entries.
 func (qm *Manager) CreateWebhookEntry(ctx context.Context, pageID, folder string) (string, error) {
 	// Find the current minimum queue ID
@@ -252,7 +252,7 @@ func (qm *Manager) CreateWebhookEntry(ctx context.Context, pageID, folder string
 	// Determine the new ID
 	var newID int
 	if minID == 0 || minID >= webhookIDThreshold {
-		// No webhook entries yet, start at 999
+		// No webhook entries yet, start at 99999
 		newID = webhookIDThreshold - 1
 	} else {
 		// Decrement from current minimum

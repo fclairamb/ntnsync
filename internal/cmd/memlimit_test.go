@@ -50,22 +50,22 @@ func TestDetectCgroupMemoryLimit(t *testing.T) {
 	}{
 		{
 			name:       "v2 readable limit is used",
-			v2Content:  strPtr("3221225472"),
-			v1Content:  strPtr("999999999999999"), // would be unlimited-sentinel anyway
+			v2Content:  new("3221225472"),
+			v1Content:  new("999999999999999"), // would be unlimited-sentinel anyway
 			wantLimit:  3221225472,
 			wantDetect: true,
 		},
 		{
 			name:       "v2 max falls back to v1",
-			v2Content:  strPtr("max"),
-			v1Content:  strPtr("1073741824"),
+			v2Content:  new("max"),
+			v1Content:  new("1073741824"),
 			wantLimit:  1073741824,
 			wantDetect: true,
 		},
 		{
 			name:       "v2 missing falls back to v1",
 			v2Content:  nil,
-			v1Content:  strPtr("1073741824"),
+			v1Content:  new("1073741824"),
 			wantLimit:  1073741824,
 			wantDetect: true,
 		},
@@ -77,39 +77,39 @@ func TestDetectCgroupMemoryLimit(t *testing.T) {
 		},
 		{
 			name:       "v2 max and v1 missing",
-			v2Content:  strPtr("max"),
+			v2Content:  new("max"),
 			v1Content:  nil,
 			wantDetect: false,
 		},
 		{
 			name:       "v1 sentinel above ceiling is unlimited",
 			v2Content:  nil,
-			v1Content:  strPtr(strconv.FormatInt(math.MaxInt64, 10)),
+			v1Content:  new(strconv.FormatInt(math.MaxInt64, 10)),
 			wantDetect: false,
 		},
 		{
 			name:       "v2 above ceiling is unlimited",
-			v2Content:  strPtr(strconv.FormatInt((1<<40)+1, 10)),
+			v2Content:  new(strconv.FormatInt((1<<40)+1, 10)),
 			v1Content:  nil,
 			wantDetect: false,
 		},
 		{
 			name:       "v2 unparseable falls back to v1",
-			v2Content:  strPtr("not-a-number"),
-			v1Content:  strPtr("1073741824"),
+			v2Content:  new("not-a-number"),
+			v1Content:  new("1073741824"),
 			wantLimit:  1073741824,
 			wantDetect: true,
 		},
 		{
 			name:       "v2 empty falls back to v1",
-			v2Content:  strPtr(""),
-			v1Content:  strPtr("1073741824"),
+			v2Content:  new(""),
+			v1Content:  new("1073741824"),
 			wantLimit:  1073741824,
 			wantDetect: true,
 		},
 		{
 			name:       "v2 negative is rejected, v1 missing",
-			v2Content:  strPtr("-1"),
+			v2Content:  new("-1"),
 			v1Content:  nil,
 			wantDetect: false,
 		},
@@ -217,8 +217,4 @@ func TestSetMemoryLimitFromCgroup_NoUsableLimitIsNoOp(t *testing.T) {
 	if after != before {
 		t.Fatalf("setMemoryLimitFromCgroup() changed memory limit from %d to %d, want no change (no usable cgroup limit)", before, after)
 	}
-}
-
-func strPtr(s string) *string {
-	return &s
 }
