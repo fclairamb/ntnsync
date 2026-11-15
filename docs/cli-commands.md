@@ -372,6 +372,14 @@ ntnsync remote test
 - An unset or malformed value falls back to the default (`1`) rather than
   failing startup.
 
+**Other writers on the branch** (`remote` mode): when the remote branch moved
+under ntnsync (a Renovate or human commit), a push or pull fetches the new tip
+and replays the local changes on top of it as one commit. On a path changed on
+both sides the local copy wins; remote changes to other paths are kept. If the
+clone still cannot be pushed, it is flagged and the next start deletes the
+local directory and clones again (unpushed local commits are lost). A clone
+whose `HEAD` cannot be read is replaced the same way.
+
 **`NTN_STORAGE=github`**: Opt-in backend that talks to the GitHub Git Data API
 directly — no clone, no working tree, no local filesystem writes. `reindex`,
 `cleanup` and `list --tree` are not supported in this mode and fail fast naming

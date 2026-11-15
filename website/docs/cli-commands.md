@@ -376,6 +376,14 @@ ntnsync remote test
 - An unset or malformed value falls back to the default (`1`) rather than
   failing startup.
 
+**Other writers on the branch** (`remote` mode): when the remote branch moved
+under ntnsync (a Renovate or human commit), a push or pull fetches the new tip
+and replays the local changes on top of it as one commit. On a path changed on
+both sides the local copy wins; remote changes to other paths are kept. If the
+clone still cannot be pushed, it is flagged and the next start deletes the
+local directory and clones again (unpushed local commits are lost). A clone
+whose `HEAD` cannot be read is replaced the same way.
+
 **`NTN_QUEUE_BRANCH`**: When set, the rapidly-churning sync queue (`.notion-sync/queue`)
 is committed to a separate branch instead of the main branch. Page content,
 `.notion-sync/ids` registries and `.notion-sync/state.json` stay on `NTN_GIT_BRANCH`.
